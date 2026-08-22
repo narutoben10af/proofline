@@ -13,12 +13,14 @@ create table public.analysis_sessions (
   idle_expires_at timestamptz not null,
   absolute_expires_at timestamptz not null,
   provider_sent boolean not null default false,
+  provider_sent_at timestamptz,
   deletion_requested_at timestamptz,
   deletion_completed_at timestamptz,
   deletion_status text
     check (deletion_status is null or deletion_status in ('complete', 'partial')),
   unique (id, owner_id),
   check (idle_expires_at <= absolute_expires_at),
+  check (provider_sent = (provider_sent_at is not null)),
   check (
     (state not in ('DELETING', 'DELETED') and deletion_requested_at is null)
     or (state in ('DELETING', 'DELETED') and deletion_requested_at is not null)
@@ -84,10 +86,12 @@ create table public.analysis_snapshots (
   evidence_chain_sha256 text not null check (evidence_chain_sha256 ~ '^[0-9a-f]{64}$'),
   source_span_count integer not null default 0 check (source_span_count >= 0),
   provider_sent boolean not null default false,
+  provider_sent_at timestamptz,
   created_at timestamptz not null default now(),
   completed_at timestamptz,
   foreign key (session_id, owner_id)
-    references public.analysis_sessions(id, owner_id) on delete cascade
+    references public.analysis_sessions(id, owner_id) on delete cascade,
+  check (provider_sent = (provider_sent_at is not null))
 );
 
 -- Receipts are retained briefly after session metadata is deleted. Authenticated users can
@@ -109,7 +113,7 @@ create table public.deletion_receipts (
   storage_objects_gone boolean not null,
   provider_sent boolean not null,
   claim text not null default
-    'Deleted from MagicFin application-managed database rows and private Storage objects.',
+    'Deletion attempt scoped to MagicFin application-managed database rows and private Storage objects.',
   exclusions text[] not null default array[
     'immutable fixtures',
     'user/browser downloads',
@@ -153,14 +157,14 @@ grant insert (
   id, owner_id, state, created_at, updated_at, last_activity_at,
   idle_expires_at, absolute_expires_at
 ) on public.analysis_sessions to authenticated;
-grant update (state, updated_at, last_activity_at, idle_expires_at)
+grant update (state, updated_at, last_activity_at, idle_expires_at, deletion_requested_at)
   on public.analysis_sessions to authenticated;
 
-grant select, insert, delete on public.documents to authenticated;
-grant update (display_name, validation_status, expires_at)
-  on public.documents to authenticated;
+grant select, insert, update, delete on public.documents to authenticated;
 grant select, insert, update, delete on public.source_spans to authenticated;
-grant select, insert, update, delete on public.analysis_snapshots to authenticated;
+grant select, insert, delete on public.analysis_snapshots to authenticated;
+grant update (schema_version, status, evidence_chain_sha256, source_span_count, completed_at)
+  on public.analysis_snapshots to authenticated;
 grant select on public.deletion_receipts to authenticated;
 
 grant select, insert, update, delete on
@@ -183,7 +187,15 @@ create policy analysis_sessions_update_own
   with check ((select auth.uid()) = owner_id);
 create policy analysis_sessions_delete_own
   on public.analysis_sessions for delete to authenticated
-  using ((select auth.uid()) = owner_id);
+  using (
+    (select auth.uid()) = owner_id
+    and state = 'DELETING'
+    and not exists (
+      select 1
+      from public.documents document
+      where document.session_id = analysis_sessions.id
+    )
+  );
 
 create policy documents_select_own
   on public.documents for select to authenticated
@@ -284,6 +296,18 @@ create policy source_objects_update_own
     bucket_id = 'proofline-source-library'
     and owner_id = (select auth.uid())::text
     and (storage.foldername(name))[1] = (select auth.uid())::text
+    and (storage.foldername(name))[2] ~
+      '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    and storage.filename(name) ~
+      '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    and exists (
+      select 1
+      from public.documents document
+      where document.owner_id = (select auth.uid())
+        and document.session_id::text = (storage.foldername(name))[2]
+        and document.id::text = storage.filename(name)
+        and document.storage_object_path = name
+    )
   );
 create policy source_objects_delete_own
   on storage.objects for delete to authenticated

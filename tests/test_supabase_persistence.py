@@ -1,5 +1,6 @@
 import json
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from proofline.supabase_persistence import (
     SupabaseAnalysisRepository,
     SupabaseConfiguration,
     SupabasePrivateObjectStore,
+    SupabaseServerMaintenanceRepository,
     SupabaseUserContext,
     configured_user_adapters,
     object_path,
@@ -134,6 +136,8 @@ def test_private_object_store_rejects_cross_owner_paths_and_accepts_any_2xx() ->
     store.upload(expected, b"pdf", "application/pdf")
     assert store.download(expected) == b"pdf"
     assert store.delete(expected) is True
+    assert transport.calls[0][2]["x-upsert"] == "false"
+    assert "/storage/v1/object/authenticated/proofline-source-library/" in transport.calls[1][1]
 
     foreign = object_path(OWNER_B, SESSION_B, DOCUMENT_A)
     with pytest.raises(PersistenceError, match="STORAGE_OBJECT_PATH_INVALID"):
@@ -150,6 +154,34 @@ def test_adapter_factory_stays_gated_without_complete_server_configuration() -> 
     )
     with pytest.raises(PersistenceError, match="SUPABASE_NOT_CONFIGURED"):
         configured_user_adapters(settings, user(), transport=FakeTransport())
+
+
+def test_server_maintenance_uses_secret_only_backend_header_and_bounds_receipts() -> None:
+    now = datetime(2026, 8, 22, 6, tzinfo=UTC)
+    response = json.dumps([{"id": str(SESSION_A)}]).encode()
+    transport = FakeTransport([HttpResult(200, response), HttpResult(200, b"[]")])
+    maintenance = SupabaseServerMaintenanceRepository(
+        configuration(), "sb_secret_backend-test-placeholder", transport=transport
+    )
+
+    maintenance.mark_provider_transfer_started(
+        session_id=SESSION_A, owner_id=OWNER_A, started_at=now
+    )
+    assert maintenance.list_expired_sessions(now=now) == []
+
+    _method, _url, headers, body = transport.calls[0]
+    assert headers["apikey"].startswith("sb_secret_")
+    assert "Authorization" not in headers
+    assert json.loads(body)["provider_sent"] is True
+    assert json.loads(body)["provider_sent_at"].startswith("2026-08-22T06:00:00")
+
+    invalid_receipt = {
+        "completed_at": now.isoformat(),
+        "retained_until": (now + timedelta(hours=3)).isoformat(),
+        "provider_sent": False,
+    }
+    with pytest.raises(PersistenceError, match="DELETION_RECEIPT_RETENTION_INVALID"):
+        maintenance.write_deletion_receipt(invalid_receipt)
 
 
 def test_migration_has_private_bucket_explicit_grants_and_owner_rls_for_every_action() -> None:
@@ -173,8 +205,11 @@ def test_migration_has_private_bucket_explicit_grants_and_owner_rls_for_every_ac
         "storage_object_path = owner_id::text || '/' || session_id::text || '/' || id::text" in sql
     )
     assert "provider_sent boolean not null default false" in sql
+    assert "check (provider_sent = (provider_sent_at is not null))" in sql
     assert "retained_until timestamptz not null" in sql
-    assert " owner " not in sql
+    assert "storage.objects for delete to authenticated" in sql
+    assert "state = 'deleting'" in sql
+    assert " owner =" not in sql
 
 
 def test_sql_regression_exercises_cross_user_read_and_delete_denial() -> None:

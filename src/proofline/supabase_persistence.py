@@ -138,6 +138,8 @@ class AnalysisPersistenceRepository(Protocol):
     def get_session(self, session_id: UUID) -> dict[str, Any] | None: ...
     def list_documents(self, session_id: UUID) -> list[dict[str, Any]]: ...
     def upsert_document(self, document: dict[str, Any]) -> dict[str, Any]: ...
+    def request_delete(self, session_id: UUID, requested_at: datetime) -> dict[str, Any]: ...
+    def delete_document_metadata_after_object(self, document_id: UUID) -> bool: ...
     def delete_session_metadata_after_objects(self, session_id: UUID) -> bool: ...
 
 
@@ -170,6 +172,7 @@ class _SupabaseApiClient:
         payload: Any | None = None,
         content_type: str = "application/json",
         prefer: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> HttpResult:
         url = f"{self.base_url}{path}"
         if query:
@@ -179,6 +182,8 @@ class _SupabaseApiClient:
             headers["Authorization"] = f"Bearer {self.bearer_token}"
         if prefer:
             headers["Prefer"] = prefer
+        if extra_headers:
+            headers.update(extra_headers)
         body: bytes | None = None
         if payload is not None:
             if isinstance(payload, bytes):
@@ -312,6 +317,42 @@ class SupabaseAnalysisRepository:
             raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502)
         return rows[0]
 
+    def request_delete(self, session_id: UUID, requested_at: datetime) -> dict[str, Any]:
+        rows = _json_rows(
+            self.client.request(
+                "PATCH",
+                "/rest/v1/analysis_sessions",
+                query={
+                    "id": f"eq.{session_id}",
+                    "owner_id": f"eq.{self.user.owner_id}",
+                    "state": "in.(OPEN,PROCESSING)",
+                },
+                payload={
+                    "state": "DELETING",
+                    "updated_at": requested_at,
+                    "deletion_requested_at": requested_at,
+                },
+                prefer="return=representation",
+            )
+        )
+        if len(rows) != 1:
+            raise PersistenceError("SUPABASE_SESSION_NOT_OPEN", 409)
+        return rows[0]
+
+    def delete_document_metadata_after_object(self, document_id: UUID) -> bool:
+        rows = _json_rows(
+            self.client.request(
+                "DELETE",
+                "/rest/v1/documents",
+                query={
+                    "id": f"eq.{document_id}",
+                    "owner_id": f"eq.{self.user.owner_id}",
+                },
+                prefer="return=representation",
+            )
+        )
+        return len(rows) == 1
+
     def delete_session_metadata_after_objects(self, session_id: UUID) -> bool:
         rows = _json_rows(
             self.client.request(
@@ -361,13 +402,15 @@ class SupabasePrivateObjectStore:
             f"/storage/v1/object/{self.configuration.bucket}/{quote(object_path, safe='/')}",
             payload=content,
             content_type=canonical_type,
+            extra_headers={"x-upsert": "false"},
         )
 
     def download(self, object_path: str) -> bytes:
         self._assert_owner_path(object_path)
         return self.client.request(
             "GET",
-            f"/storage/v1/object/{self.configuration.bucket}/{quote(object_path, safe='/')}",
+            f"/storage/v1/object/authenticated/{self.configuration.bucket}/"
+            f"{quote(object_path, safe='/')}",
         ).body
 
     def delete(self, object_path: str) -> bool:
@@ -377,6 +420,91 @@ class SupabasePrivateObjectStore:
             f"/storage/v1/object/{self.configuration.bucket}/{quote(object_path, safe='/')}",
         )
         return result.status_code in {200, 204}
+
+
+class SupabaseServerMaintenanceRepository:
+    """Backend-only lifecycle seam. A secret key bypasses RLS and must never reach a browser."""
+
+    def __init__(
+        self,
+        configuration: SupabaseConfiguration,
+        secret_key: str,
+        *,
+        transport: HttpTransport | None = None,
+    ) -> None:
+        if not secret_key.startswith("sb_secret_"):
+            raise PersistenceError("SUPABASE_SECRET_KEY_INVALID")
+        self.client = _SupabaseApiClient(
+            base_url=configuration.base_url,
+            api_key=secret_key,
+            bearer_token=None,
+            transport=transport or UrllibHttpTransport(),
+        )
+
+    def mark_provider_transfer_started(
+        self, *, session_id: UUID, owner_id: UUID, started_at: datetime
+    ) -> None:
+        rows = _json_rows(
+            self.client.request(
+                "PATCH",
+                "/rest/v1/analysis_sessions",
+                query={"id": f"eq.{session_id}", "owner_id": f"eq.{owner_id}"},
+                payload={
+                    "provider_sent": True,
+                    "provider_sent_at": started_at,
+                    "updated_at": started_at,
+                },
+                prefer="return=representation",
+            )
+        )
+        if len(rows) != 1:
+            raise PersistenceError("SUPABASE_SESSION_NOT_FOUND", 404)
+
+    def list_expired_sessions(self, *, now: datetime, limit: int = 100) -> list[dict[str, Any]]:
+        if not 1 <= limit <= 500:
+            raise PersistenceError("SUPABASE_MAINTENANCE_LIMIT_INVALID")
+        instant = now.astimezone(UTC).isoformat()
+        return _json_rows(
+            self.client.request(
+                "GET",
+                "/rest/v1/analysis_sessions",
+                query={
+                    "select": "*",
+                    "state": "in.(OPEN,PROCESSING)",
+                    "or": f"(idle_expires_at.lte.{instant},absolute_expires_at.lte.{instant})",
+                    "order": "absolute_expires_at.asc",
+                    "limit": str(limit),
+                },
+            )
+        )
+
+    def write_deletion_receipt(self, receipt: dict[str, Any]) -> dict[str, Any]:
+        completed_at = datetime.fromisoformat(str(receipt["completed_at"]).replace("Z", "+00:00"))
+        retained_until = datetime.fromisoformat(
+            str(receipt["retained_until"]).replace("Z", "+00:00")
+        )
+        if retained_until <= completed_at or retained_until - completed_at > timedelta(hours=2):
+            raise PersistenceError("DELETION_RECEIPT_RETENTION_INVALID")
+        if not isinstance(receipt.get("provider_sent"), bool):
+            raise PersistenceError("DELETION_RECEIPT_PROVIDER_STATE_INVALID")
+        rows = _json_rows(
+            self.client.request(
+                "POST",
+                "/rest/v1/deletion_receipts",
+                payload=receipt,
+                prefer="return=representation",
+            )
+        )
+        if len(rows) != 1:
+            raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502)
+        return rows[0]
+
+    def prune_deletion_receipts(self, *, now: datetime) -> None:
+        self.client.request(
+            "DELETE",
+            "/rest/v1/deletion_receipts",
+            query={"retained_until": f"lte.{now.astimezone(UTC).isoformat()}"},
+        )
 
 
 def object_path(owner_id: UUID, session_id: UUID, document_id: UUID) -> str:
@@ -402,4 +530,24 @@ def configured_user_adapters(
     return (
         SupabaseAnalysisRepository(configuration, user, transport=transport),
         SupabasePrivateObjectStore(configuration, user, transport=transport),
+    )
+
+
+def configured_server_maintenance(
+    settings: Settings,
+    *,
+    transport: HttpTransport | None = None,
+) -> SupabaseServerMaintenanceRepository:
+    selection = persistence_selection(settings)
+    if selection.backend != "supabase" or not selection.configured:
+        raise PersistenceError("SUPABASE_NOT_CONFIGURED", 503)
+    configuration = SupabaseConfiguration(
+        project_url=str(settings.supabase_url),
+        publishable_key=settings.supabase_publishable_key.get_secret_value(),
+        bucket=settings.supabase_storage_bucket,
+    )
+    return SupabaseServerMaintenanceRepository(
+        configuration,
+        settings.supabase_secret_key.get_secret_value(),
+        transport=transport,
     )

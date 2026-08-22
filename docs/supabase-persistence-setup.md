@@ -77,9 +77,10 @@ The bucket remains private. Downloads require the user's JWT under RLS or a deli
 signed URL from reviewed backend code. Every metadata table has RLS enabled and ownership checks use
 `(select auth.uid()) = owner_id`. UPDATE policies contain both `USING` and `WITH CHECK`.
 
-Document upsert requires INSERT, SELECT and UPDATE privileges. Column grants prevent browser code
-from changing `owner_id` or `provider_sent`; the backend sets `provider_sent=true` immediately before
-any provider transfer, including attempts that later fail.
+Document upsert has INSERT, SELECT and UPDATE privileges, with ownership and immutable path shape
+enforced by RLS, composite foreign keys and checks. Column grants prevent browser code from changing
+session/snapshot `provider_sent`; the backend sets `provider_sent=true` immediately before any
+provider transfer, including attempts that later fail.
 
 ## TTL and deletion receipts
 
@@ -96,3 +97,20 @@ the same ordered deletion coordinator as an explicit user deletion:
 
 The receipt scope excludes immutable fixtures, user/browser downloads, infrastructure backups/logs
 and third-party retention. Provider deletion is not claimed.
+
+## Current Supabase references checked
+
+Verified on 2026-08-22 against the current Supabase documentation and changelog:
+
+- [Storage access control](https://supabase.com/docs/guides/storage/security/access-control) —
+  private-object RLS and INSERT + SELECT + UPDATE for upsert.
+- [Storage bucket access models](https://supabase.com/docs/guides/storage/buckets/fundamentals) —
+  private downloads require an authenticated request or signed URL.
+- [Securing the Data API](https://supabase.com/docs/guides/api/securing-your-api) — explicit grants
+  and RLS are separate controls; new-table exposure defaults are changing.
+- [API keys](https://supabase.com/docs/guides/api/api-keys) — publishable keys are client-safe;
+  secret keys are backend-only and bypass RLS.
+- [Passwordless email](https://supabase.com/docs/guides/auth/auth-email-passwordless) — Magic Link
+  and OTP configuration, expiry and redirect requirements.
+- [Supabase changelog](https://supabase.com/changelog.md) — 2026 Data API exposure, OAuth 2xx and
+  Free-plan email-template changes.
