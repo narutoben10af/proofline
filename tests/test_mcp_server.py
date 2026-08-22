@@ -77,9 +77,31 @@ def test_tool_descriptors_are_exact_read_only_search_and_fetch() -> None:
     assert tools[0].inputSchema["required"] == ["query"]
     assert set(tools[0].inputSchema["properties"]) == {"query"}
     assert tools[0].inputSchema["properties"]["query"]["maxLength"] == 200
+    assert tools[0].outputSchema["required"] == ["results"]
+    assert tools[0].outputSchema["properties"]["results"]["items"] == {
+        "$ref": "#/$defs/SearchResult"
+    }
+    assert tools[0].outputSchema["$defs"]["SearchResult"]["required"] == [
+        "id",
+        "title",
+        "url",
+    ]
+    assert set(tools[0].outputSchema["$defs"]["SearchResult"]["properties"]) == {
+        "id",
+        "title",
+        "url",
+    }
     assert tools[1].inputSchema["required"] == ["id"]
     assert set(tools[1].inputSchema["properties"]) == {"id"}
     assert tools[1].inputSchema["properties"]["id"]["maxLength"] == 160
+    assert tools[1].outputSchema["required"] == ["id", "title", "text", "url"]
+    assert set(tools[1].outputSchema["properties"]) == {
+        "id",
+        "title",
+        "text",
+        "url",
+        "metadata",
+    }
     for tool in tools:
         assert tool.annotations.readOnlyHint is True
         assert tool.annotations.destructiveHint is False
@@ -133,9 +155,12 @@ def test_streamable_http_mcp_endpoint_initializes() -> None:
     assert listed.status_code == 200
     assert [tool["name"] for tool in listed.json()["result"]["tools"]] == ["search", "fetch"]
     assert called.status_code == 200
-    call_content = called.json()["result"]["content"]
+    call_result = called.json()["result"]
+    call_content = call_result["content"]
     assert len(call_content) == 1
     assert call_content[0]["type"] == "text"
-    assert json.loads(call_content[0]["text"])["results"][0]["id"] == (
+    expected = "metric:apple:fy2025:operating_margin"
+    assert json.loads(call_content[0]["text"])["results"][0]["id"] == expected
+    assert call_result["structuredContent"]["results"][0]["id"] == (
         "metric:apple:fy2025:operating_margin"
     )

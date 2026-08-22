@@ -9,7 +9,7 @@ from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 DEMO_BOUNDARY = (
     "Public, human-reviewed hackathon fixture. No private database, uploaded document bytes, "
@@ -29,6 +29,24 @@ class CatalogItem:
     @property
     def searchable_text(self) -> str:
         return " ".join((self.id, self.title, self.text, json.dumps(self.metadata)))
+
+
+class SearchResult(BaseModel):
+    id: str
+    title: str
+    url: str
+
+
+class SearchOutput(BaseModel):
+    results: list[SearchResult]
+
+
+class FetchOutput(BaseModel):
+    id: str
+    title: str
+    text: str
+    url: str
+    metadata: dict[str, Any] | None = None
 
 
 APPLE_10K = (
@@ -385,12 +403,13 @@ def _rank(item: CatalogItem, query_tokens: tuple[str, ...]) -> tuple[int, str]:
 
 def _text_result(payload: dict[str, Any]) -> CallToolResult:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return CallToolResult(content=[TextContent(type="text", text=encoded)])
+    return CallToolResult(
+        content=[TextContent(type="text", text=encoded)],
+        structuredContent=payload,
+    )
 
 
-def search_catalog(query: str) -> CallToolResult:
-    """Return deterministic standard search results from the reviewed demo catalog."""
-
+def _search_payload(query: str) -> dict[str, Any]:
     query_tokens = _tokens(query)
     if not query_tokens:
         raise ValueError("query must include at least one letter or number")
@@ -400,31 +419,36 @@ def search_catalog(query: str) -> CallToolResult:
         if all(token in item.searchable_text.casefold() for token in query_tokens)
     ]
     matches.sort(key=lambda item: _rank(item, query_tokens))
-    return _text_result(
-        {
-            "results": [
-                {"id": item.id, "title": item.title, "url": item.url}
-                for item in matches[:MAX_RESULTS]
-            ]
-        }
-    )
+    return {
+        "results": [
+            {"id": item.id, "title": item.title, "url": item.url} for item in matches[:MAX_RESULTS]
+        ]
+    }
+
+
+def search_catalog(query: str) -> CallToolResult:
+    """Return deterministic standard search results from the reviewed demo catalog."""
+
+    return _text_result(_search_payload(query))
+
+
+def _fetch_payload(item_id: str) -> dict[str, Any]:
+    item = _CATALOG.get(item_id)
+    if item is None:
+        raise ValueError("unknown id; call search first and pass an exact returned id")
+    return {
+        "id": item.id,
+        "title": item.title,
+        "text": item.text,
+        "url": item.url,
+        "metadata": item.metadata,
+    }
 
 
 def fetch_catalog(item_id: str) -> CallToolResult:
     """Return one deterministic standard fetch document from the reviewed demo catalog."""
 
-    item = _CATALOG.get(item_id)
-    if item is None:
-        raise ValueError("unknown id; call search first and pass an exact returned id")
-    return _text_result(
-        {
-            "id": item.id,
-            "title": item.title,
-            "text": item.text,
-            "url": item.url,
-            "metadata": item.metadata,
-        }
-    )
+    return _text_result(_fetch_payload(item_id))
 
 
 READ_ONLY_ANNOTATIONS = ToolAnnotations(
@@ -437,14 +461,14 @@ READ_ONLY_ANNOTATIONS = ToolAnnotations(
 
 def search(
     query: Annotated[str, Field(min_length=1, max_length=200)],
-) -> CallToolResult:
-    return search_catalog(query)
+) -> SearchOutput:
+    return SearchOutput.model_validate(_search_payload(query))
 
 
 def fetch(
     id: Annotated[str, Field(min_length=1, max_length=160)],
-) -> CallToolResult:
-    return fetch_catalog(id)
+) -> FetchOutput:
+    return FetchOutput.model_validate(_fetch_payload(id))
 
 
 def build_mcp_server() -> FastMCP:

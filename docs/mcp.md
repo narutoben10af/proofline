@@ -16,12 +16,13 @@ optional UI and uses the official Python `mcp` SDK with streamable HTTP:
 
 The server implements the standard read-only company-knowledge tools:
 
-- `search(query: string)` returns exactly one text content item. Its text is a
-  JSON object with a `results` array; each result contains only `id`, `title`,
-  and a canonical citation `url`.
+- `search(query: string)` returns structured content with a `results` array and
+  exactly one text content item containing the same JSON object. Each result
+  contains only `id`, `title`, and a canonical citation `url`.
 - `fetch(id: string)` accepts an exact ID returned by `search` and returns
-  exactly one text content item. Its text is a JSON object with `id`, `title`,
-  `text`, `url`, and fixture-boundary `metadata`.
+  structured content with `id`, `title`, `text`, `url`, and fixture-boundary
+  `metadata`, plus exactly one text content item containing the same JSON
+  object.
 
 Both tools are read-only, non-destructive, idempotent, and closed-world. Search
 queries are bounded to 200 characters, fetch IDs to 160 characters, and search
