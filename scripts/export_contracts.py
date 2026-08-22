@@ -2,7 +2,15 @@ import json
 from pathlib import Path
 
 from proofline.api import app
-from proofline.contracts import AnalysisRequest, AnalysisResponse, EvidenceChainSnapshot
+from proofline.contracts import (
+    AnalysisRequest,
+    AnalysisResponse,
+    CreateSessionRequest,
+    DeletionReceipt,
+    EvidenceChainSnapshot,
+    ExtensionContracts,
+    SessionStatus,
+)
 from proofline.metrics import REGISTRY
 
 
@@ -16,6 +24,10 @@ def main() -> None:
     write_json(target / "analysis-request.schema.json", AnalysisRequest.model_json_schema())
     write_json(target / "analysis-response.schema.json", AnalysisResponse.model_json_schema())
     write_json(target / "evidence-chain.schema.json", EvidenceChainSnapshot.model_json_schema())
+    write_json(target / "session-create.schema.json", CreateSessionRequest.model_json_schema())
+    write_json(target / "session-status.schema.json", SessionStatus.model_json_schema())
+    write_json(target / "deletion-receipt.schema.json", DeletionReceipt.model_json_schema())
+    write_json(target / "extension-contracts.schema.json", ExtensionContracts.model_json_schema())
     write_json(
         target / "metric-registry.json",
         {

@@ -21,6 +21,11 @@ case produces an exceptional metric state and an `uncertain` finding. Numeric co
 absolute tolerances recorded on findings. Direction-only claims remain uncertain without a separate
 comparable baseline.
 
+Analysis responses carry the complete portable evidence subset—documents, source spans, claims,
+observations, metric results, and findings—rather than returning unresolved IDs. Extraction warnings,
+non-adjacent/reversed revenue periods, and bounded-Decimal range failures also fail closed to
+`uncertain`.
+
 ## Consequences
 
 - JavaScript consumers must treat decimals as strings until formatting or explicit decimal parsing.

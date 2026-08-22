@@ -27,4 +27,11 @@ def analyze(request: AnalysisRequest) -> AnalysisResponse:
         )
         metric_results.append(result)
         findings.append(classify(f"finding-{index}", claim, result, input_observations, evidence))
-    return AnalysisResponse(metric_results=tuple(metric_results), findings=tuple(findings))
+    return AnalysisResponse(
+        documents=request.documents,
+        source_spans=request.source_spans,
+        claims=request.claims,
+        observations=request.observations,
+        metric_results=tuple(metric_results),
+        findings=tuple(findings),
+    )

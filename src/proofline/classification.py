@@ -32,6 +32,14 @@ def classify(
         )
     if claim.metric_id != result.metric_id:
         return _uncertain(finding_id, claim, result, evidence_source_span_ids, "Metric IDs differ.")
+    if claim.extraction_warnings:
+        return _uncertain(
+            finding_id,
+            claim,
+            result,
+            evidence_source_span_ids,
+            "Extraction warnings require human review before a decisive classification.",
+        )
     comparability_warning = _claim_comparability_warning(claim, result, input_observations)
     if comparability_warning:
         return _uncertain(
@@ -48,6 +56,16 @@ def classify(
             result,
             evidence_source_span_ids,
             "A direction-only claim needs a comparable baseline that is not in this contract.",
+        )
+    if not claim.asserted_value.is_finite() or (
+        not claim.asserted_value.is_zero() and not -50 <= claim.asserted_value.adjusted() <= 50
+    ):
+        return _uncertain(
+            finding_id,
+            claim,
+            result,
+            evidence_source_span_ids,
+            "The asserted value exceeds the supported Decimal range.",
         )
 
     tolerance = REGISTRY[result.metric_id].tolerance

@@ -1,6 +1,24 @@
 {
   "request": {
     "schema_version": "1.0.0",
+    "documents": [
+      {"id":"pdf-doc","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","issuer":"Example Group","source_url":"https://example.test/report.pdf","retrieved_at":"2026-08-22T00:00:00Z","reporting_basis":"Derived test fixture","version_label":"FY2025"},
+      {"id":"workbook-doc","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","issuer":"Example Group","source_url":"https://example.test/fixture.xlsx","retrieved_at":"2026-08-22T00:00:00Z","reporting_basis":"Derived test fixture","version_label":"FY2025"}
+    ],
+    "source_spans": [
+      {"id":"span-pdf-1","document_version_id":"pdf-doc","source":{"kind":"pdf","document_id":"pdf-doc","page":1,"quote":"Revenue grew 25.1%."}},
+      {"id":"span-pdf-2","document_version_id":"pdf-doc","source":{"kind":"pdf","document_id":"pdf-doc","page":2,"quote":"Operating margin was 25%."}},
+      {"id":"span-pdf-3","document_version_id":"pdf-doc","source":{"kind":"pdf","document_id":"pdf-doc","page":3,"quote":"Current ratio was 2.0."}},
+      {"id":"span-pdf-4","document_version_id":"pdf-doc","source":{"kind":"pdf","document_id":"pdf-doc","page":4,"quote":"Project-defined FCF margin was 20%."}},
+      {"id":"span-pdf-5","document_version_id":"pdf-doc","source":{"kind":"pdf","document_id":"pdf-doc","page":5,"quote":"Revenue increased."}},
+      {"id":"span-xlsx-B2","document_version_id":"workbook-doc","source":{"kind":"spreadsheet","document_id":"workbook-doc","sheet":"Fixture","cell":"B2","display_value":"100"}},
+      {"id":"span-xlsx-C2","document_version_id":"workbook-doc","source":{"kind":"spreadsheet","document_id":"workbook-doc","sheet":"Fixture","cell":"C2","display_value":"80"}},
+      {"id":"span-xlsx-B3","document_version_id":"workbook-doc","source":{"kind":"spreadsheet","document_id":"workbook-doc","sheet":"Fixture","cell":"B3","display_value":"20"}},
+      {"id":"span-xlsx-B4","document_version_id":"workbook-doc","source":{"kind":"spreadsheet","document_id":"workbook-doc","sheet":"Fixture","cell":"B4","display_value":"50"}},
+      {"id":"span-xlsx-B5","document_version_id":"workbook-doc","source":{"kind":"spreadsheet","document_id":"workbook-doc","sheet":"Fixture","cell":"B5","display_value":"25"}},
+      {"id":"span-xlsx-B6","document_version_id":"workbook-doc","source":{"kind":"spreadsheet","document_id":"workbook-doc","sheet":"Fixture","cell":"B6","display_value":"30"}},
+      {"id":"span-xlsx-B7","document_version_id":"workbook-doc","source":{"kind":"spreadsheet","document_id":"workbook-doc","sheet":"Fixture","cell":"B7","display_value":"(10)"}}
+    ],
     "claims": [
       {"id":"claim-growth","text":"Revenue grew 25.1%.","entity":"Example Group","metric_id":"revenue_growth_yoy","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"asserted_value":"0.251","unit":"ratio","currency":"USD","source_span_id":"span-pdf-1","extraction_warnings":[]},
       {"id":"claim-margin","text":"Operating margin was 25%.","entity":"Example Group","metric_id":"operating_margin","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"asserted_value":"0.25","unit":"ratio","currency":"USD","source_span_id":"span-pdf-2","extraction_warnings":[]},

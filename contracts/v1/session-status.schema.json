@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "FixtureInput": {
+      "additionalProperties": false,
+      "properties": {
+        "fixture_id": {
+          "enum": [
+            "apple-fy2025",
+            "pcg-fy2025"
+          ],
+          "title": "Fixture Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "fixture",
+          "default": "fixture",
+          "title": "Kind",
+          "type": "string"
+        },
+        "public_data_confirmed": {
+          "const": true,
+          "title": "Public Data Confirmed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "fixture_id",
+        "public_data_confirmed"
+      ],
+      "title": "FixtureInput",
+      "type": "object"
+    },
+    "ProcessingError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]*$",
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 500,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "stage": {
+          "enum": [
+            "intake",
+            "pdf",
+            "workbook",
+            "model",
+            "analysis"
+          ],
+          "title": "Stage",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "stage",
+        "message",
+        "retryable"
+      ],
+      "title": "ProcessingError",
+      "type": "object"
+    },
+    "UploadInput": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "upload",
+          "default": "upload",
+          "title": "Kind",
+          "type": "string"
+        },
+        "pdf_filename": {
+          "maxLength": 255,
+          "minLength": 5,
+          "pattern": "(?i)^.+\\.pdf$",
+          "title": "Pdf Filename",
+          "type": "string"
+        },
+        "public_data_confirmed": {
+          "const": true,
+          "title": "Public Data Confirmed",
+          "type": "boolean"
+        },
+        "workbook_filename": {
+          "maxLength": 255,
+          "minLength": 6,
+          "pattern": "(?i)^.+\\.(xlsx|csv|json)$",
+          "title": "Workbook Filename",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pdf_filename",
+        "workbook_filename",
+        "public_data_confirmed"
+      ],
+      "title": "UploadInput",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "cached_output_status": {
+      "enum": [
+        "not_checked",
+        "available",
+        "in_use",
+        "unavailable"
+      ],
+      "title": "Cached Output Status",
+      "type": "string"
+    },
+    "errors": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ProcessingError"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "fallback_disclosure": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fallback Disclosure"
+    },
+    "input": {
+      "discriminator": {
+        "mapping": {
+          "fixture": "#/$defs/FixtureInput",
+          "upload": "#/$defs/UploadInput"
+        },
+        "propertyName": "kind"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/FixtureInput"
+        },
+        {
+          "$ref": "#/$defs/UploadInput"
+        }
+      ],
+      "title": "Input"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "accepted",
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "state",
+    "input",
+    "cached_output_status"
+  ],
+  "title": "SessionStatus",
+  "type": "object"
+}

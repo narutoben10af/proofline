@@ -1,6 +1,6 @@
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, DecimalException, InvalidOperation, localcontext
 
 from proofline.contracts import (
     ExceptionalState,
@@ -107,6 +107,14 @@ def calculate_metric(
             ExceptionalState.INVALID_PLAN,
             "An observation concept does not match its calculation role.",
         )
+    if any(not _decimal_in_range(fact.numeric_value) for fact in facts):
+        return _exception(
+            result_id,
+            plan,
+            definition,
+            ExceptionalState.NUMERIC_RANGE,
+            "An input exceeds the supported Decimal exponent range (-50 to 50).",
+        )
     warning = _comparability_warning(plan.metric_id, facts)
     if warning:
         return _exception(result_id, plan, definition, ExceptionalState.INCOMPARABLE, warning)
@@ -130,11 +138,14 @@ def calculate_metric(
         if capex.sign_convention != "cash_outflow_positive" or capex.numeric_value < 0:
             return _exception(result_id, plan, definition, ExceptionalState.UNRESOLVED_SIGN)
     try:
-        value = definition.calculate(values)
-    except (InvalidOperation, ZeroDivisionError):
-        return _exception(result_id, plan, definition, ExceptionalState.INCOMPARABLE)
-    if not value.is_finite():
-        return _exception(result_id, plan, definition, ExceptionalState.INCOMPARABLE)
+        with localcontext() as context:
+            context.Emax = 50
+            context.Emin = -50
+            value = definition.calculate(values)
+    except (DecimalException, InvalidOperation, ZeroDivisionError):
+        return _exception(result_id, plan, definition, ExceptionalState.NUMERIC_RANGE)
+    if not value.is_finite() or not _decimal_in_range(value):
+        return _exception(result_id, plan, definition, ExceptionalState.NUMERIC_RANGE)
     return MetricResult(
         id=result_id,
         metric_id=plan.metric_id,
@@ -161,9 +172,19 @@ def _comparability_warning(metric_id: MetricId, facts: list[FactObservation]) ->
             return "Period durations differ."
         if len({fact.period.end for fact in facts}) != 2:
             return "Current and prior revenue periods must differ."
+        current, prior = facts
+        if current.period.start is None or prior.period.start is None:
+            return "Period start dates are required for chronological comparison."
+        gap_days = (current.period.start - prior.period.end).days
+        if current.period.end <= prior.period.end or not 1 <= gap_days <= 7:
+            return "Revenue periods are not adjacent or current/prior roles are reversed."
     elif len({fact.period for fact in facts}) != 1:
         return "Input periods differ."
     return None
+
+
+def _decimal_in_range(value: Decimal) -> bool:
+    return value.is_finite() and (value.is_zero() or -50 <= value.adjusted() <= 50)
 
 
 def _exception(

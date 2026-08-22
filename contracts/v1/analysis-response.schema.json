@@ -9,16 +9,311 @@
       "title": "Classification",
       "type": "string"
     },
+    "DocumentVersion": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "issuer": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Issuer",
+          "type": "string"
+        },
+        "reporting_basis": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Reporting Basis",
+          "type": "string"
+        },
+        "retrieved_at": {
+          "format": "date-time",
+          "title": "Retrieved At",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "source_url": {
+          "title": "Source Url",
+          "type": "string"
+        },
+        "version_label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Version Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha256",
+        "issuer",
+        "source_url",
+        "retrieved_at",
+        "reporting_basis",
+        "version_label"
+      ],
+      "title": "DocumentVersion",
+      "type": "object"
+    },
     "ExceptionalState": {
       "enum": [
         "missing_input",
         "incomparable",
         "zero_or_negative_denominator",
         "unresolved_sign",
-        "invalid_plan"
+        "invalid_plan",
+        "numeric_range"
       ],
       "title": "ExceptionalState",
       "type": "string"
+    },
+    "FactObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "concept": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Concept",
+          "type": "string"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "display_value": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Value",
+          "type": "string"
+        },
+        "entity_scope": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Entity Scope",
+          "type": "string"
+        },
+        "fixture_status": {
+          "enum": [
+            "official",
+            "derived"
+          ],
+          "title": "Fixture Status",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "numeric_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Numeric Value"
+        },
+        "period": {
+          "$ref": "#/$defs/Period"
+        },
+        "restated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Restated"
+        },
+        "sign_convention": {
+          "anyOf": [
+            {
+              "enum": [
+                "positive",
+                "cash_outflow_positive",
+                "cash_outflow_negative"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sign Convention"
+        },
+        "source_span_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Source Span Id",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source_span_id",
+        "concept",
+        "numeric_value",
+        "display_value",
+        "unit",
+        "period",
+        "entity_scope",
+        "restated",
+        "fixture_status"
+      ],
+      "title": "FactObservation",
+      "type": "object"
+    },
+    "FinancialClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "asserted_direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "up",
+                "down",
+                "flat"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asserted Direction"
+        },
+        "asserted_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asserted Value"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "entity": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity"
+        },
+        "extraction_warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Extraction Warnings",
+          "type": "array"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "metric_id": {
+          "$ref": "#/$defs/MetricId"
+        },
+        "period": {
+          "$ref": "#/$defs/Period"
+        },
+        "source_span_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Source Span Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "metric_id",
+        "period",
+        "source_span_id"
+      ],
+      "title": "FinancialClaim",
+      "type": "object"
     },
     "Finding": {
       "additionalProperties": false,
@@ -200,10 +495,207 @@
       ],
       "title": "MetricResult",
       "type": "object"
+    },
+    "PdfSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "pdf",
+          "default": "pdf",
+          "title": "Kind",
+          "type": "string"
+        },
+        "page": {
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "quote": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Quote",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "page",
+        "quote"
+      ],
+      "title": "PdfSourceRef",
+      "type": "object"
+    },
+    "Period": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_weeks": {
+          "anyOf": [
+            {
+              "maximum": 54,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Weeks"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        }
+      },
+      "required": [
+        "end"
+      ],
+      "title": "Period",
+      "type": "object"
+    },
+    "SourceSpan": {
+      "additionalProperties": false,
+      "properties": {
+        "document_version_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Document Version Id",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "source": {
+          "discriminator": {
+            "mapping": {
+              "pdf": "#/$defs/PdfSourceRef",
+              "spreadsheet": "#/$defs/SpreadsheetSourceRef"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PdfSourceRef"
+            },
+            {
+              "$ref": "#/$defs/SpreadsheetSourceRef"
+            }
+          ],
+          "title": "Source"
+        }
+      },
+      "required": [
+        "id",
+        "document_version_id",
+        "source"
+      ],
+      "title": "SourceSpan",
+      "type": "object"
+    },
+    "SpreadsheetSourceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "cell": {
+          "pattern": "^[A-Z]{1,3}[1-9][0-9]*(?::[A-Z]{1,3}[1-9][0-9]*)?$",
+          "title": "Cell",
+          "type": "string"
+        },
+        "display_value": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Value",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "kind": {
+          "const": "spreadsheet",
+          "default": "spreadsheet",
+          "title": "Kind",
+          "type": "string"
+        },
+        "sheet": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Sheet",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id",
+        "sheet",
+        "cell",
+        "display_value"
+      ],
+      "title": "SpreadsheetSourceRef",
+      "type": "object"
     }
   },
   "additionalProperties": false,
   "properties": {
+    "cached_output": {
+      "const": false,
+      "default": false,
+      "title": "Cached Output",
+      "type": "boolean"
+    },
+    "claims": {
+      "items": {
+        "$ref": "#/$defs/FinancialClaim"
+      },
+      "title": "Claims",
+      "type": "array"
+    },
+    "documents": {
+      "items": {
+        "$ref": "#/$defs/DocumentVersion"
+      },
+      "title": "Documents",
+      "type": "array"
+    },
+    "fallback_disclosure": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fallback Disclosure"
+    },
     "findings": {
       "items": {
         "$ref": "#/$defs/Finding"
@@ -224,6 +716,19 @@
       "title": "Metric Results",
       "type": "array"
     },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/FactObservation"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "output_status": {
+      "const": "calculated",
+      "default": "calculated",
+      "title": "Output Status",
+      "type": "string"
+    },
     "policy_version": {
       "const": "1.0.0",
       "default": "1.0.0",
@@ -235,9 +740,20 @@
       "default": "1.0.0",
       "title": "Schema Version",
       "type": "string"
+    },
+    "source_spans": {
+      "items": {
+        "$ref": "#/$defs/SourceSpan"
+      },
+      "title": "Source Spans",
+      "type": "array"
     }
   },
   "required": [
+    "documents",
+    "source_spans",
+    "claims",
+    "observations",
     "metric_results",
     "findings"
   ],

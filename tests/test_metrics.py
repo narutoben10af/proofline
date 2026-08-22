@@ -125,3 +125,63 @@ def test_duplicate_observation_ids_are_rejected() -> None:
 
     with pytest.raises(ValueError, match="duplicate observation IDs"):
         AnalysisRequest.model_validate(fixture)
+
+
+def test_extraction_warning_forces_uncertain() -> None:
+    fixture = load_fixture()["request"]
+    fixture["claims"][0]["extraction_warnings"] = ["low-confidence numeric extraction"]
+    request = AnalysisRequest.model_validate({**fixture, "items": fixture["items"][:1]})
+
+    response = analyze(request)
+
+    assert response.metric_results[0].result == Decimal("0.25")
+    assert response.findings[0].classification == "uncertain"
+
+
+@pytest.mark.parametrize("case", ["reversed", "non_adjacent"])
+def test_growth_requires_correct_adjacent_chronology(case: str) -> None:
+    fixture = load_fixture()["request"]
+    current = next(item for item in fixture["observations"] if item["id"] == "revenue-current")
+    prior = next(item for item in fixture["observations"] if item["id"] == "revenue-prior")
+    if case == "reversed":
+        current["period"], prior["period"] = prior["period"], current["period"]
+    else:
+        prior["period"] = {
+            "start": "2023-01-01",
+            "end": "2023-12-31",
+            "duration_weeks": 52,
+        }
+    request = AnalysisRequest.model_validate({**fixture, "items": fixture["items"][:1]})
+
+    response = analyze(request)
+
+    assert response.metric_results[0].exceptional_state == ExceptionalState.INCOMPARABLE
+    assert response.findings[0].classification == "uncertain"
+
+
+def test_extreme_decimal_returns_typed_uncertain_result() -> None:
+    fixture = load_fixture()["request"]
+    current = next(item for item in fixture["observations"] if item["id"] == "revenue-current")
+    current["numeric_value"] = "1e1000000"
+    request = AnalysisRequest.model_validate({**fixture, "items": fixture["items"][:1]})
+
+    response = analyze(request)
+
+    assert response.metric_results[0].exceptional_state == ExceptionalState.NUMERIC_RANGE
+    assert response.findings[0].classification == "uncertain"
+
+
+def test_period_rejects_start_after_end() -> None:
+    fixture = load_fixture()["request"]
+    fixture["claims"][0]["period"]["start"] = "2026-01-01"
+
+    with pytest.raises(ValueError, match="period start must be on or before end"):
+        AnalysisRequest.model_validate(fixture)
+
+
+def test_evidence_references_must_resolve() -> None:
+    fixture = load_fixture()["request"]
+    fixture["observations"][0]["source_span_id"] = "span-does-not-exist"
+
+    with pytest.raises(ValueError, match="unknown observation source_span_id"):
+        AnalysisRequest.model_validate(fixture)

@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "deleted": {
+      "const": true,
+      "default": true,
+      "title": "Deleted",
+      "type": "boolean"
+    },
+    "deleted_at": {
+      "format": "date-time",
+      "title": "Deleted At",
+      "type": "string"
+    },
+    "disclosure": {
+      "title": "Disclosure",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "default": [
+        "in_memory_session_metadata"
+      ],
+      "items": {
+        "const": "in_memory_session_metadata",
+        "type": "string"
+      },
+      "title": "Scope",
+      "type": "array"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "deleted_at",
+    "disclosure"
+  ],
+  "title": "DeletionReceipt",
+  "type": "object"
+}

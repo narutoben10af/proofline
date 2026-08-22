@@ -100,8 +100,9 @@ later reviewed adapter.
 - Only the four Tier 0 metrics are accepted. Arithmetic uses Python `Decimal` and typed allowlisted
   plans; no model-generated code or expressions are executed.
 - Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
-- There is no database, upload/session lifecycle, OCR, hosted model call, frontend, or production
-  privacy/compliance claim in this slice.
+- There is no database, document-byte upload, OCR, hosted model call, frontend, or production
+  privacy/compliance claim in this slice. Session endpoints retain and delete process-local intake
+  metadata only; they do not yet run processing adapters.
 - `requirements.lock` pins direct dependencies for repeatable hackathon setup but is not a fully
   resolved cross-platform transitive lock.
 

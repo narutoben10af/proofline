@@ -70,7 +70,8 @@
         "incomparable",
         "zero_or_negative_denominator",
         "unresolved_sign",
-        "invalid_plan"
+        "invalid_plan",
+        "numeric_range"
       ],
       "title": "ExceptionalState",
       "type": "string"
