@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     supabase_publishable_key: SecretStr | None = None
     supabase_secret_key: SecretStr | None = None
     supabase_storage_bucket: str = "proofline-source-library"
+    ocr_tesseract_command: Path | None = None
+    ocr_timeout_seconds: float = Field(default=20.0, ge=1, le=60)
+    ocr_confidence_threshold: float = Field(default=0.7, ge=0, le=1)
 
 
 @lru_cache

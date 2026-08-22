@@ -20,6 +20,7 @@ from proofline.supabase_persistence import (
     object_path,
     persistence_selection,
     source_session_repository,
+    verified_user_context,
 )
 
 OWNER_A = UUID("10000000-0000-4000-8000-000000000001")
@@ -56,7 +57,7 @@ def user(owner: UUID = OWNER_A) -> SupabaseUserContext:
     return SupabaseUserContext(owner_id=owner, access_token="user.jwt.access-token")
 
 
-def test_process_local_is_the_default_and_supabase_is_never_auto_activated() -> None:
+def test_process_local_is_default_and_complete_supabase_config_activates_live_api() -> None:
     local = persistence_selection(Settings(_env_file=None))
     assert local.backend == "process-local"
     assert local.configured is True
@@ -72,8 +73,8 @@ def test_process_local_is_the_default_and_supabase_is_never_auto_activated() -> 
     selection = persistence_selection(configured)
     assert selection.backend == "supabase"
     assert selection.configured is True
-    assert selection.activated is False
-    assert selection.reason_code == "SUPABASE_AUTH_INTEGRATION_REQUIRED"
+    assert selection.activated is True
+    assert selection.reason_code == "SUPABASE_AUTHENTICATED_PIPELINE_ACTIVE"
 
 
 def test_source_library_repository_boundary_defaults_local_and_fails_closed_for_supabase() -> None:
@@ -87,7 +88,7 @@ def test_source_library_repository_boundary_defaults_local_and_fails_closed_for_
         supabase_publishable_key="sb_publishable_test-only-placeholder",
         supabase_secret_key="sb_secret_test-only-placeholder",
     )
-    with pytest.raises(PersistenceError, match="SUPABASE_AUTH_INTEGRATION_REQUIRED"):
+    with pytest.raises(PersistenceError, match="AUTHENTICATED_API_REQUIRED"):
         source_session_repository(configured)
 
 
@@ -111,6 +112,28 @@ def test_user_repository_sends_publishable_key_and_user_jwt_with_owner_filter() 
     assert "owner_id=eq.10000000-0000-4000-8000-000000000001" in url
     assert headers["apikey"].startswith("sb_publishable_")
     assert headers["Authorization"] == "Bearer user.jwt.access-token"
+    assert "secret" not in json.dumps(headers).lower()
+    assert body is None
+
+
+def test_user_context_is_verified_at_supabase_auth_without_exposing_server_secret() -> None:
+    settings = Settings(
+        _env_file=None,
+        source_library_persistence_backend="supabase",
+        supabase_url="https://qvxohnlboefomtjecxdh.supabase.co",
+        supabase_publishable_key="sb_publishable_test-only-placeholder",
+        supabase_secret_key="sb_secret_backend-only-placeholder",
+    )
+    transport = FakeTransport([HttpResult(200, json.dumps({"id": str(OWNER_A)}).encode())])
+
+    context = verified_user_context(settings, "verified.user.access-token", transport=transport)
+
+    assert context.owner_id == OWNER_A
+    method, url, headers, body = transport.calls[0]
+    assert method == "GET"
+    assert url.endswith("/auth/v1/user")
+    assert headers["Authorization"] == "Bearer verified.user.access-token"
+    assert headers["apikey"].startswith("sb_publishable_")
     assert "secret" not in json.dumps(headers).lower()
     assert body is None
 
@@ -275,8 +298,38 @@ def test_server_maintenance_uses_secret_only_backend_header_and_bounds_receipts(
         maintenance.write_deletion_receipt(invalid_receipt)
 
 
+def test_completed_analysis_is_written_through_one_server_only_transaction_rpc() -> None:
+    transport = FakeTransport([HttpResult(200, json.dumps({"status": "complete"}).encode())])
+    maintenance = SupabaseServerMaintenanceRepository(
+        configuration(), "sb_secret_backend-test-placeholder", transport=transport
+    )
+
+    result = maintenance.persist_completed_analysis(
+        session_id=SESSION_A,
+        owner_id=OWNER_A,
+        response={"schema_version": "1.0.0", "output_status": "calculated"},
+        response_sha256="a" * 64,
+        source_spans=[{"source_span_id": "span:one"}],
+        evidence=[{"observation_id": "fact:" + "a" * 20}],
+    )
+
+    assert result["status"] == "complete"
+    method, url, headers, body = transport.calls[0]
+    assert method == "POST"
+    assert url.endswith("/rest/v1/rpc/persist_completed_analysis")
+    assert headers["apikey"].startswith("sb_secret_")
+    assert "Authorization" not in headers
+    payload = json.loads(body)
+    assert payload["target_session_id"] == str(SESSION_A)
+    assert payload["target_owner_id"] == str(OWNER_A)
+    assert payload["analysis_response_sha256"] == "a" * 64
+
+
 def test_migration_makes_trust_fields_rpc_or_service_role_only() -> None:
-    migration = next((Path(__file__).parents[1] / "supabase/migrations").glob("*.sql"))
+    migration = (
+        Path(__file__).parents[1]
+        / "supabase/migrations/20260822054654_source_library_persistence.sql"
+    )
     sql = migration.read_text(encoding="utf-8").lower()
 
     for table in ("analysis_sessions", "documents", "source_spans", "analysis_snapshots"):

@@ -14,7 +14,9 @@ from proofline.contracts import (
     MetricId,
 )
 from proofline.normalization import NormalizationResult, normalize_financial_workbook
+from proofline.parsing.base import OcrAdapter
 from proofline.parsing.models import ExtractedPage
+from proofline.parsing.ocr import OcrExtractionError
 from proofline.parsing.pdf import NativePdfAdapter, PdfExtractionError
 from proofline.parsing.workbook import StructuralXlsxAdapter, WorkbookExtractionError
 from proofline.service import analyze
@@ -58,6 +60,11 @@ def analyze_uploaded_evidence(
     pdf_file_id: str,
     workbook_file_id: str,
     retrieved_at: datetime,
+    ocr: OcrAdapter | None = None,
+    pdf_document_id: str | None = None,
+    workbook_document_id: str | None = None,
+    pdf_display_name: str | None = None,
+    workbook_display_name: str | None = None,
 ) -> AnalysisResponse:
     """Build an AnalysisResponse solely from one uploaded PDF/XLSX pair.
 
@@ -66,17 +73,37 @@ def analyze_uploaded_evidence(
     generic normalizer and fails closed on unsupported or ambiguous structures.
     """
 
-    pdf_document_id = f"{session_id}:report"
-    workbook_document_id = f"{session_id}:workbook"
+    pdf_document_id = pdf_document_id or f"{session_id}:report"
+    workbook_document_id = workbook_document_id or f"{session_id}:workbook"
     try:
-        pages = NativePdfAdapter().extract_pages(pdf_content, pdf_document_id)
+        pages = NativePdfAdapter(ocr=ocr).extract_pages(pdf_content, pdf_document_id)
+    except OcrExtractionError as error:
+        raise UploadAnalysisError("OCR_FAILED", str(error)) from error
     except PdfExtractionError as error:
         raise UploadAnalysisError("PDF_MAPPING_REQUIRED", str(error)) from error
     if not pages or any(page.span is None for page in pages):
+        if any(
+            warning.code == "ocr_not_configured"
+            for page in pages
+            for warning in page.warnings
+        ):
+            raise UploadAnalysisError(
+                "OCR_UNAVAILABLE",
+                "The PDF contains scanned or text-sparse pages and no verified OCR runtime is "
+                "available in this deployment.",
+            )
         raise UploadAnalysisError(
             "PDF_MAPPING_REQUIRED",
             "Every PDF page must contain enough native text for reviewed claim mapping; "
             "OCR or a human mapping is required.",
+        )
+    if any(
+        warning.code == "ocr_low_confidence" for page in pages for warning in page.warnings
+    ):
+        raise UploadAnalysisError(
+            "OCR_LOW_CONFIDENCE",
+            "OCR text was below the configured confidence threshold and cannot be used as "
+            "financial evidence.",
         )
     try:
         cells = StructuralXlsxAdapter().extract_cells(workbook_content, workbook_document_id)
@@ -116,6 +143,7 @@ def analyze_uploaded_evidence(
             normalized.entity_scope,
             retrieved_at,
             normalized,
+            pdf_display_name,
         ),
         _document(
             workbook_document_id,
@@ -125,6 +153,7 @@ def analyze_uploaded_evidence(
             normalized.entity_scope,
             retrieved_at,
             normalized,
+            workbook_display_name,
         ),
     )
     plans = {item.plan.metric_id: item.plan for item in normalized.metric_inputs}
@@ -169,6 +198,7 @@ def _document(
     entity_scope: str | None,
     retrieved_at: datetime,
     result: NormalizationResult,
+    display_name: str | None = None,
 ) -> DocumentVersion:
     if not issuer or not entity_scope:
         raise UploadAnalysisError("WORKBOOK_MAPPING_REQUIRED", "Issuer metadata is required.")
@@ -181,7 +211,7 @@ def _document(
         source_url=f"urn:proofline:session:{file_id}",
         retrieved_at=retrieved_at,
         reporting_basis=entity_scope,
-        version_label=f"FY{latest_year}",
+        version_label=display_name or f"FY{latest_year}",
     )
 
 

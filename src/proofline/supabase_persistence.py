@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol
@@ -13,6 +14,7 @@ from proofline.config import Settings
 from proofline.source_library import ProcessSessionRepository, SessionRepository
 
 PERSISTENCE_BUCKET = "proofline-source-library"
+ACCESS_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9._~-]{20,4096}$")
 
 
 class PersistenceError(Exception):
@@ -124,9 +126,11 @@ def persistence_selection(settings: Settings) -> PersistenceSelection:
     return PersistenceSelection(
         backend="supabase",
         configured=configured,
-        activated=False,
+        activated=configured,
         reason_code=(
-            "SUPABASE_AUTH_INTEGRATION_REQUIRED" if configured else "SUPABASE_NOT_CONFIGURED"
+            "SUPABASE_AUTHENTICATED_PIPELINE_ACTIVE"
+            if configured
+            else "SUPABASE_NOT_CONFIGURED"
         ),
     )
 
@@ -151,7 +155,7 @@ def source_session_repository(
             tombstone_ttl=tombstone_ttl,
             max_tombstones=max_tombstones,
         )
-    raise PersistenceError(selection.reason_code, 503)
+    raise PersistenceError("AUTHENTICATED_API_REQUIRED", 503)
 
 
 class AnalysisPersistenceRepository(Protocol):
@@ -496,6 +500,42 @@ class SupabaseServerMaintenanceRepository:
             raise PersistenceError("SUPABASE_DOCUMENT_NOT_CHECKING", 409)
         return rows[0]
 
+    def discard_document(self, *, document_id: UUID, owner_id: UUID) -> None:
+        self.client.request(
+            "DELETE",
+            "/rest/v1/documents",
+            query={"id": f"eq.{document_id}", "owner_id": f"eq.{owner_id}"},
+        )
+
+    def persist_completed_analysis(
+        self,
+        *,
+        session_id: UUID,
+        owner_id: UUID,
+        response: dict[str, Any],
+        response_sha256: str,
+        source_spans: list[dict[str, Any]],
+        evidence: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        if len(response_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in response_sha256
+        ):
+            raise PersistenceError("ANALYSIS_DIGEST_INVALID")
+        return _json_single(
+            self.client.request(
+                "POST",
+                "/rest/v1/rpc/persist_completed_analysis",
+                payload={
+                    "target_session_id": session_id,
+                    "target_owner_id": owner_id,
+                    "analysis_response": response,
+                    "analysis_response_sha256": response_sha256,
+                    "normalized_source_spans": source_spans,
+                    "normalized_evidence": evidence,
+                },
+            )
+        )
+
     def list_expired_sessions(self, *, now: datetime, limit: int = 100) -> list[dict[str, Any]]:
         if not 1 <= limit <= 500:
             raise PersistenceError("SUPABASE_MAINTENANCE_LIMIT_INVALID")
@@ -567,6 +607,39 @@ def configured_user_adapters(
         SupabaseAnalysisRepository(configuration, user, transport=transport),
         SupabasePrivateObjectStore(configuration, user, transport=transport),
     )
+
+
+def verified_user_context(
+    settings: Settings,
+    access_token: str,
+    *,
+    transport: HttpTransport | None = None,
+) -> SupabaseUserContext:
+    """Verify a bearer token at Supabase Auth; never trust browser JWT claims directly."""
+
+    if not ACCESS_TOKEN_PATTERN.fullmatch(access_token):
+        raise PersistenceError("USER_ACCESS_TOKEN_INVALID", 401)
+    selection = persistence_selection(settings)
+    if selection.backend != "supabase" or not selection.configured:
+        raise PersistenceError("SUPABASE_NOT_CONFIGURED", 503)
+    configuration = SupabaseConfiguration(
+        project_url=str(settings.supabase_url),
+        publishable_key=settings.supabase_publishable_key.get_secret_value(),
+        bucket=settings.supabase_storage_bucket,
+    )
+    client = _SupabaseApiClient(
+        base_url=configuration.base_url,
+        api_key=configuration.publishable_key,
+        bearer_token=access_token,
+        transport=transport or UrllibHttpTransport(),
+    )
+    try:
+        result = client.request("GET", "/auth/v1/user")
+        payload = json.loads(result.body)
+        owner_id = UUID(str(payload["id"]))
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+        raise PersistenceError("USER_ACCESS_TOKEN_INVALID", 401) from error
+    return SupabaseUserContext(owner_id=owner_id, access_token=access_token)
 
 
 def configured_server_maintenance(
