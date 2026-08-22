@@ -1,199 +1,555 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowRight, CaretDown, Check, CheckCircle, FilePdf, Flag, Info,
-  MagnifyingGlass, Question, Table, Trash, Warning, X,
+  ArrowRight, ArrowsIn, ArrowsOut, Books, CaretDown, CaretLeft, CaretRight, Check, CheckCircle,
+  ClockCounterClockwise, DownloadSimple, FileArrowUp, FilePdf, Files, Gear,
+  House, Info, List, LockKey, MagicWand, MagnifyingGlass, PaperPlaneTilt, Receipt, ShieldCheck,
+  SignIn, Sparkle, Table, UserCircle, Warning, X,
 } from "@phosphor-icons/react";
-import { reviewFixture } from "./mock-contract";
+import { ReviewDesk, downloadReviewedReport } from "./ReviewDesk";
+import { adaptProductContract, buildDeterministicDemoPdf, getAssistantAdapter, getAssistantChartSpecs, getProviderConnectionAdapter, getReviewedReportBundle, metricDefinitionRegistry, productFixture, requestReviewedPdf, runMagicStages } from "./product-contract";
+import { createSourceSession, uploadSource } from "./session-api";
+
+const TrendChart = lazy(() => import("./TrendChart"));
 
 export { reviewFixture } from "./mock-contract";
+export { productFixture } from "./product-contract";
 
-const statusItems = [
-  { key: "supported", label: "Supported", icon: CheckCircle },
-  { key: "uncertain", label: "Uncertain", icon: Question },
-  { key: "contradicted", label: "Contradicted", icon: X },
+const primaryNav = [
+  { route: "/", label: "Home", icon: House },
+  { route: "/files", label: "Files & Sources", icon: Books },
+  { route: "/history", label: "History", icon: ClockCounterClockwise },
+  { route: "/review", label: "Review Desk", icon: ShieldCheck },
+  { route: "/reports", label: "Reports", icon: Receipt },
 ];
 
-function Header({ onDelete, onNewReview, deleteButtonRef }) {
-  return (
-    <header className="topbar">
-      <button className="wordmark" type="button" onClick={onNewReview} aria-label="Proofline home">Proofline</button>
-      <span className="topbar-divider" aria-hidden="true" />
-      <span className="desk-label">Review Desk</span>
-      <div className="review-context" aria-label="Current review">
-        <span>{reviewFixture.meta.entity}</span><span aria-hidden="true">·</span><span>{reviewFixture.meta.period}</span>
-      </div>
-      <button ref={deleteButtonRef} className="text-button danger" type="button" onClick={onDelete}>
-        <Trash size={17} aria-hidden="true" />Delete session
-      </button>
-    </header>
-  );
+const utilityNav = [
+  { route: "/profile", label: "Profile", icon: UserCircle },
+  { route: "/settings", label: "Settings", icon: Gear },
+  { route: "/sign-in", label: "Sign in", icon: SignIn },
+];
+
+function routeTitle(route) {
+  if (route === "/company") return "Home";
+  return [...primaryNav, ...utilityNav].find((item) => item.route === route)?.label || (route === "/privacy" ? "Privacy & data" : route === "/legal" ? "Legal" : "Not found");
 }
 
-function StatusSummary() {
-  return (
-    <section className="status-summary" aria-label="Finding summary">
-      {statusItems.map(({ key, label, icon: Icon }) => (
-        <div className={`status-item ${key}`} key={key}>
-          <Icon size={25} aria-hidden="true" /><span>{label}</span><strong>{reviewFixture.summary[key]}</strong>
-        </div>
-      ))}
-    </section>
-  );
+function canonicalRoute(value) {
+  const [rawPath, rawHash] = String(value || "/").split("#");
+  const path = rawPath === "/sources" ? "/files" : rawPath || "/";
+  const hash = rawPath === "/sources" ? rawHash || "sources" : rawHash || "";
+  return { path, hash, href: `${path}${hash ? `#${hash}` : ""}` };
 }
 
-function VisualVerdict() {
-  return (
-    <section className="verdict" aria-labelledby="verdict-title">
-      <p className="eyebrow contradicted-text">Contradicted claim</p>
-      <h1 id="verdict-title">{reviewFixture.claim.text}</h1>
-      <p className="verdict-intro">{reviewFixture.result.rationale}</p>
-      <div className="section-label-row"><span>Visual verdict</span></div>
-      <div className="comparison" aria-label="Claimed growth 8.2 percent; calculated growth 5.4 percent; discrepancy 2.8 percentage points">
-        <div className="comparison-side claim-side"><span>Report narrative</span><strong>{reviewFixture.claim.value}</strong><small>Stated revenue growth (FY2024 → FY2025)</small></div>
-        <div className="difference"><span className="difference-mark" aria-hidden="true"><X size={23} weight="bold" /></span><b>Contradicted</b><strong>{reviewFixture.result.difference}</strong><small>percentage points</small></div>
-        <div className="comparison-side"><span>Deterministic evidence</span><strong>{reviewFixture.result.value}</strong><small>Calculated revenue growth (FY2024 → FY2025)</small></div>
-      </div>
-    </section>
-  );
+function useRoute(initialRoute) {
+  const [route, setRoute] = useState(() => canonicalRoute(initialRoute || `${window.location.pathname}${window.location.hash}`).path);
+  useEffect(() => {
+    const onPopState = () => {
+      const resolved = canonicalRoute(`${window.location.pathname}${window.location.hash}`);
+      if (resolved.href !== `${window.location.pathname}${window.location.hash}`) window.history.replaceState({}, "", resolved.href);
+      setRoute(resolved.path);
+      window.setTimeout(() => {
+        const hash = resolved.hash;
+        const main = document.getElementById("main-content");
+        const target = document.getElementById(hash || "main-content");
+        if (hash) {
+          target?.focus({ preventScroll: false });
+          target?.scrollIntoView({ block: "start" });
+        } else {
+          window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
+          if (main) main.scrollTop = 0;
+          target?.focus({ preventScroll: true });
+        }
+      }, 0);
+    };
+    window.addEventListener("popstate", onPopState);
+    if (!initialRoute) onPopState();
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [initialRoute]);
+  const navigate = (nextRoute) => {
+    const { path, hash, href } = canonicalRoute(nextRoute);
+    if (`${window.location.pathname}${window.location.hash}` !== href) window.history.pushState({}, "", href);
+    setRoute(path);
+    window.setTimeout(() => {
+      const main = document.getElementById("main-content");
+      const target = document.getElementById(hash || "main-content");
+      if (hash) {
+        target?.focus({ preventScroll: false });
+        target?.scrollIntoView({ block: "start" });
+      } else {
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        if (main) main.scrollTop = 0;
+        target?.focus({ preventScroll: true });
+      }
+    }, 0);
+  };
+  return [route, navigate];
 }
 
-function ProofTrail() {
-  const steps = [
-    { title: "Claim", body: reviewFixture.claim.text, note: reviewFixture.claim.source },
-    { title: "Cited inputs", body: `${reviewFixture.inputs[1].period} revenue ${reviewFixture.inputs[1].value}; ${reviewFixture.inputs[0].period} revenue ${reviewFixture.inputs[0].value}`, note: "Audited Consolidated Statements of Income" },
-    { title: "Deterministic formula", body: "Revenue growth = (current-period revenue − prior-period revenue) ÷ prior-period revenue", note: reviewFixture.meta.registryVersion },
-    { title: "Result", body: reviewFixture.formula, note: `Tolerance ${reviewFixture.result.tolerance}` },
-  ];
-  return (
-    <section className="proof" aria-labelledby="proof-title">
-      <div className="section-label-row"><span id="proof-title">Proof trail</span></div>
-      <ol>{steps.map((step, index) => (
-        <li key={step.title}><span className="step-number" aria-hidden="true">{index + 1}</span><div><h2>{step.title}</h2><p>{step.body}</p></div><small>{step.note}</small></li>
-      ))}</ol>
-    </section>
-  );
+function useDismissible(open, onClose, returnRef, panelRef) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!open) return undefined;
+    const prior = document.activeElement;
+    window.setTimeout(() => {
+      const first = panelRef.current?.querySelector('button:not([disabled]), a[href], input:not([disabled]), [tabindex="0"]');
+      (first || panelRef.current)?.focus();
+    }, 0);
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); }
+      if (event.key !== "Tab" || !panelRef.current) return;
+      const focusable = [...panelRef.current.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), [tabindex="0"]')];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) { event.preventDefault(); last.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.setTimeout(() => (returnRef?.current || prior)?.focus?.(), 0);
+    };
+  }, [open, panelRef, returnRef]);
 }
 
-function EvidenceDisclosure({ type, title, subtitle, children, defaultOpen = false }) {
-  const [open, setOpen] = useState(defaultOpen);
-  const panelId = useId();
-  const Icon = type === "pdf" ? FilePdf : Table;
-  return (
-    <section className={`evidence-block ${open ? "open" : ""}`}>
-      <button className="evidence-toggle" type="button" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen((value) => !value)}>
-        <Icon size={21} aria-hidden="true" /><span><strong>{title}</strong><small>{subtitle}</small></span><CaretDown size={17} className="caret" aria-hidden="true" />
-      </button>
-      <div className="evidence-content" id={panelId} hidden={!open}>{children}</div>
-    </section>
-  );
+function StatusTag({ tone = "neutral", children }) {
+  const Icon = tone === "success" ? CheckCircle : tone === "warning" ? Warning : Info;
+  return <span className={`status-tag ${tone}`}><Icon size={14} weight={tone === "success" ? "fill" : "regular"} aria-hidden="true" />{children}</span>;
 }
 
-function EvidenceRail() {
+function MetricDefinitionButton({ metricId, source }) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+  const titleId = `metric-definition-${metricId}`;
+  const definition = metricDefinitionRegistry[metricId];
+  useDismissible(open, () => setOpen(false), triggerRef, panelRef);
+  if (!definition) return null;
+  return <><button ref={triggerRef} className="metric-info-button" type="button" aria-haspopup="dialog" aria-controls={open ? titleId : undefined} aria-label={`Define ${definition.name}`} aria-expanded={open} onClick={() => setOpen(true)}><Info size={14} weight="bold" aria-hidden="true" /></button>{open && <div className="metric-definition-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}><section ref={panelRef} className="metric-definition-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex="-1"><div className="panel-title"><div><p className="eyebrow">Metric definition</p><h2 id={titleId}>{definition.name}</h2></div><button type="button" onClick={() => setOpen(false)} aria-label={`Close ${definition.name} definition`}><X size={19} /></button></div><p>{definition.definition}</p><dl><div><dt>Formula</dt><dd>{definition.formula}</dd></div><div><dt>Unit</dt><dd>{definition.unit}</dd></div><div><dt>How to read it</dt><dd>{definition.interpretation}</dd></div><div><dt>Caveat</dt><dd>{definition.caveat}</dd></div><div><dt>Current source / method</dt><dd>{source}</dd></div></dl><a className="inline-link" href="/files#sources">Open source or method <ArrowRight size={14} /></a></section></div>}</>;
+}
+
+function Sidebar({ route, onNavigate, onOpenAssistant, assistantButtonRef, mobileOpen, onCloseMobile, panelRef, backgroundInert }) {
+  const go = (next) => { onNavigate(next); onCloseMobile(); };
   return (
-    <aside className="evidence-rail" aria-labelledby="evidence-title">
-      <div className="rail-heading"><div><p className="eyebrow" id="evidence-title">Evidence</p><span>Open only what you need</span></div><Info size={18} aria-label="Evidence retains source locations from the demo fixture" /></div>
-      <EvidenceDisclosure type="pdf" title="Annual Report 2025" subtitle="Page 14 · native text" defaultOpen>
-        <div className="pdf-excerpt"><span className="page-kicker">Management discussion</span><blockquote>“For the year, revenue growth was <mark>8.2%</mark>, reflecting continued demand across our core markets.”</blockquote><small>Highlighted claim · Page 14</small></div>
-      </EvidenceDisclosure>
-      <EvidenceDisclosure type="sheet" title="Financials_FY2025.xlsx" subtitle="Income Statement · B5:C5">
-        <div className="table-wrap"><table><caption>Audited revenue inputs, USD millions</caption><thead><tr><th scope="col">Line item</th><th scope="col">FY2024</th><th scope="col">FY2025</th></tr></thead><tbody><tr><th scope="row">Revenue</th><td>2,234.2</td><td>2,354.8</td></tr></tbody></table><p className="cell-note">Cells {reviewFixture.inputs[0].cell} and {reviewFixture.inputs[1].cell}</p></div>
-      </EvidenceDisclosure>
-      <div className="fixture-note"><Info size={17} aria-hidden="true" /><p><strong>Demo data boundary</strong>This interface uses a human-verified mock contract. No issuer PDF or workbook is bundled.</p></div>
+    <aside ref={panelRef} className={`sidebar ${mobileOpen ? "mobile-open" : ""}`} aria-label="Product navigation" tabIndex="-1" inert={backgroundInert} aria-hidden={backgroundInert ? "true" : undefined}>
+      <div className="brand-lockup"><button type="button" onClick={() => go("/")} aria-label="MagicFin home"><span className="brand-spark" aria-hidden="true"><Sparkle size={16} weight="fill" /></span><span><strong>MagicFin</strong><small>Financial evidence, made clear</small></span></button><button className="mobile-close" type="button" onClick={onCloseMobile} aria-label="Close navigation"><X size={20} /></button></div>
+      <nav className="primary-nav" aria-label="Main navigation">{primaryNav.map(({ route: itemRoute, label, icon: Icon }) => <button key={itemRoute} type="button" className={route === itemRoute ? "active" : ""} aria-label={label} aria-current={route === itemRoute ? "page" : undefined} onClick={() => go(itemRoute)}><Icon size={18} aria-hidden="true" /><span>{label}</span></button>)}</nav>
+      <div className="sidebar-spacer" />
+      <button ref={assistantButtonRef} className="assistant-entry" type="button" onClick={(event) => { onOpenAssistant(event.currentTarget); onCloseMobile(); }}><MagicWand size={18} aria-hidden="true" /><span><strong>Magic Assistant</strong><small>Fixture answers with citations</small></span><CaretRight size={15} aria-hidden="true" /></button>
+      <nav className="utility-nav" aria-label="Account and settings">{utilityNav.map(({ route: itemRoute, label, icon: Icon }) => <button key={itemRoute} type="button" className={route === itemRoute ? "active" : ""} aria-label={label} aria-current={route === itemRoute ? "page" : undefined} onClick={() => go(itemRoute)}><Icon size={17} aria-hidden="true" /><span>{label}</span></button>)}</nav>
+      <div className="sidebar-legal"><button type="button" onClick={() => go("/privacy")}>Privacy & data</button><span aria-hidden="true">·</span><button type="button" onClick={() => go("/legal")}>Legal</button><small>Demo data · human-checked</small></div>
     </aside>
   );
 }
 
-function exportReviewedReport() {
-  const report = {
-    exportedAt: "2026-08-22T10:24:00+08:00",
-    reviewStatus: "human_review_required",
-    finding: reviewFixture,
-    limitations: ["Demo fixture only", "Economic context is not evidence of cause", "No issuer documents are included"],
+function MobileHeader({ onOpenNav, onOpenAssistant, menuButtonRef, backgroundInert }) {
+  return <header className="mobile-header" inert={backgroundInert} aria-hidden={backgroundInert ? "true" : undefined}><button ref={menuButtonRef} type="button" onClick={onOpenNav} aria-label="Open navigation"><List size={22} /></button><span className="mobile-wordmark">MagicFin</span><button type="button" onClick={(event) => onOpenAssistant(event.currentTarget)} aria-label="Open Magic Assistant"><MagicWand size={21} /></button></header>;
+}
+
+function PageHeader({ eyebrow, title, description, actions, children }) {
+  return <header className="page-header"><div><p className="eyebrow">{eyebrow}</p><h1>{title}</h1>{description && <p>{description}</p>}{children}</div>{actions && <div className="page-actions">{actions}</div>}</header>;
+}
+
+function SourceCard({ source, onOpen }) {
+  const warning = source.status !== "Validated";
+  return <article className="source-card" id={source.id} tabIndex="-1"><div className="source-card-top"><span className="file-kind">{source.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{source.kind}</span><StatusTag tone={warning ? "warning" : "success"}>{source.status}</StatusTag></div><h3>{source.name}</h3><p>{source.date}</p><dl><div><dt>Provenance</dt><dd>{source.provenance}</dd></div><div><dt>Anchor</dt><dd>{source.anchor}</dd></div></dl><button className="inline-link" type="button" onClick={(event) => onOpen(source, event.currentTarget)}>Open source <ArrowRight size={15} /></button></article>;
+}
+
+function TrendFigure({ data, onNavigate }) {
+  const [showTable, setShowTable] = useState(false);
+  const trend = data.trend;
+  const currencyCode = data.company.currency.split(" ")[0];
+  const sourceName = data.sources.find((source) => source.kind === "Workbook")?.name || "Financials source";
+  const metrics = {
+    revenue: { key: "revenue", label: "Revenue", unit: data.company.currency, color: "#2f704c", format: (value) => `${currencyCode} ${value.toLocaleString()}m` },
+    operatingMargin: { key: "operatingMargin", label: "Operating margin", unit: "Percent", color: "#5e4b8b", format: (value) => `${value.toFixed(1)}%` },
+    currentRatio: { key: "currentRatio", label: "Current ratio", unit: "Ratio", color: "#815000", format: (value) => `${value.toFixed(2)}×` },
+    fcfMargin: { key: "fcfMargin", label: "Free-cash-flow margin", unit: "Percent · project-defined", color: "#195f8c", format: (value) => `${value.toFixed(1)}%` },
   };
-  const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = "proofline-reviewed-report.json";
-  anchor.click();
-  URL.revokeObjectURL(url);
+  const [metricKey, setMetricKey] = useState("revenue");
+  const [startIndex, setStartIndex] = useState(0);
+  const [endIndex, setEndIndex] = useState(trend.length - 1);
+  const metric = metrics[metricKey];
+  const visibleTrend = trend.slice(startIndex, endIndex + 1);
+  const setPreset = (value) => {
+    if (value === "latest-3") setStartIndex(Math.max(0, trend.length - 3));
+    else setStartIndex(0);
+    setEndIndex(trend.length - 1);
+  };
+  return (
+    <section className="trend-card" aria-labelledby="trend-title">
+      <div className="trend-header"><div><p className="eyebrow">Company trajectory</p><h2 id="trend-title">Performance trend</h2><p>Explore the same four headline metrics across the reported periods.</p></div><div className="trend-controls"><label className="select-control">Metric<span className="select-shell"><select aria-label="Trend metric" value={metricKey} onChange={(event) => setMetricKey(event.target.value)}>{Object.entries(metrics).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select><CaretDown size={15} weight="bold" aria-hidden="true" /></span></label><label className="select-control">Reporting period<span className="select-shell"><select aria-label="Period range" value={startIndex === Math.max(0, trend.length - 3) ? "latest-3" : "all"} onChange={(event) => setPreset(event.target.value)}><option value="all">All reported periods</option><option value="latest-3">Latest 3 periods</option></select><CaretDown size={15} weight="bold" aria-hidden="true" /></span></label></div></div>
+      <div className="trend-selection" aria-live="polite"><div><span>Current selection</span><strong>{metric.label}</strong><small>{metric.unit}</small></div><div className="chart-legend" aria-label="Chart legend"><span><i className="reported-key" aria-hidden="true" />Reported history</span><span><i className="forecast-key" aria-hidden="true" />Illustrative ranges appear only in Deep analysis</span></div></div>
+      <div className="range-scrubber" aria-label="Adjust reported-period range"><div className="range-summary"><strong>{trend[startIndex].period} — {trend[endIndex].period}</strong><span>{visibleTrend.length} reported periods selected</span></div><label>Start period: {trend[startIndex].period}<input aria-label="Range start" aria-valuetext={trend[startIndex].period} type="range" min="0" max={Math.max(0, endIndex - 1)} value={startIndex} onChange={(event) => setStartIndex(Number(event.target.value))} /></label><label>End period: {trend[endIndex].period}<input aria-label="Range end" aria-valuetext={trend[endIndex].period} type="range" min={Math.min(trend.length - 1, startIndex + 1)} max={trend.length - 1} value={endIndex} onChange={(event) => setEndIndex(Number(event.target.value))} /></label></div>
+      <div className="trend-chart" role="img" tabIndex="0" aria-label={`${metric.label}, ${metric.unit}, reported history from ${visibleTrend[0].period} through ${visibleTrend[visibleTrend.length - 1].period}. Use the data-table control for exact values.`}><Suspense fallback={<div className="chart-loading" role="status">Loading accessible chart…</div>}><TrendChart trend={visibleTrend} metric={metric} /></Suspense></div>
+      <div className="trend-footer"><span>Source: {sourceName} · reported series</span><div>{onNavigate && <button className="inline-link" type="button" onClick={() => onNavigate("/reports")}>Open Deep analysis <ArrowRight size={14} /></button>}<button className="inline-link" type="button" aria-expanded={showTable} onClick={() => setShowTable((value) => !value)}>{showTable ? "Hide" : "View"} accessible data table</button></div></div>
+      {showTable && <div className="table-wrap trend-table"><table><caption>{metric.label}, {metric.unit}; reported data</caption><thead><tr><th scope="col">Period</th><th scope="col">{metric.label}</th><th scope="col">History type</th><th scope="col">Source</th></tr></thead><tbody>{visibleTrend.map((row) => <tr key={row.period}><th scope="row">{row.period}</th><td>{metric.format(row[metric.key])}</td><td>Reported history</td><td>{sourceName}</td></tr>)}</tbody></table></div>}
+    </section>
+  );
 }
 
-function ReviewActions({ onDecision }) {
+function DashboardSignals({ data }) {
+  const revenue = data.metrics.find((item) => item.id === "revenue");
+  const liquidity = data.metrics.find((item) => item.id === "current-ratio");
+  const signals = [
+    ["Trend", `${revenue.label} changed ${revenue.delta} in ${revenue.period}.`],
+    ["Pattern", `All ${data.trend.length} reported demo periods are shown for comparison.`],
+    ["Exception", `${data.review.claim.value} was claimed; the cited calculation shows ${data.review.result.value}.`],
+    ["Evidence flag", `${liquidity.label} changed ${liquidity.delta} ${liquidity.deltaLabel}.`],
+  ];
+  return <section className="signal-strip" aria-labelledby="signals-title"><div className="section-heading"><div><p className="eyebrow">Review signals</p><h2 id="signals-title">Trend, pattern, exception, and evidence flag.</h2></div></div><div>{signals.map(([label, text]) => <article key={label}><span>{label}</span><p>{text}</p></article>)}</div></section>;
+}
+
+function HeadlineMetrics({ metrics, context = "review" }) {
+  const title = context === "brief" ? "Four primary measures of reported performance." : "The four numbers to orient the review.";
+  return <section className="headline-metrics" aria-labelledby="headline-metrics-title"><div className="section-heading"><div><p className="eyebrow">Primary metrics</p><h2 id="headline-metrics-title">{title}</h2></div><small>{metrics[0]?.period} · reported period</small></div><div className="metric-grid">{metrics.map((metric, index) => <article className="metric-card" key={metric.id} style={{ "--reveal-order": index }}><div><span className="metric-label">{metric.label}<MetricDefinitionButton metricId={metric.id} source={metric.source} /></span><StatusTag tone={metric.tone === "caution" ? "warning" : "success"}>{metric.period}</StatusTag></div><strong>{metric.value}</strong><p className={metric.tone === "caution" ? "metric-delta caution" : "metric-delta"}>{metric.delta} <small>{metric.deltaLabel}</small></p><dl><div><dt>Unit</dt><dd>{metric.unit}</dd></div><div><dt>Source</dt><dd>{metric.source}</dd></div></dl></article>)}</div></section>;
+}
+
+function RunMagicProgress({ stage, complete }) {
+  return <section className={`magic-progress ${complete ? "complete" : ""}`} aria-busy={!complete}><div className="magic-progress-head" aria-live="polite"><span className="magic-orbit" aria-hidden="true"><Sparkle size={17} weight="fill" /></span><div><strong>{complete ? "Evidence trail ready" : "Running deterministic checks"}</strong><small>{complete ? "One discrepancy needs human review." : runMagicStages[stage]}</small></div></div><ol aria-label="Deterministic review stages">{runMagicStages.map((item, index) => <li key={item} className={index < stage || complete ? "done" : index === stage ? "active" : ""}>{index < stage || complete ? <Check size={14} weight="bold" /> : <span>{index + 1}</span>}{item}</li>)}</ol></section>;
+}
+
+function CompanyPage({ data, onNavigate, onOpenAssistant, onOpenSource, reducedMotion }) {
+  const [runState, setRunState] = useState("idle");
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    if (runState !== "running") return undefined;
+    const reduced = reducedMotion || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const timer = window.setInterval(() => setStage((current) => {
+      if (current >= runMagicStages.length - 1) { window.clearInterval(timer); setRunState("complete"); return current; }
+      return current + 1;
+    }), reduced ? 25 : 420);
+    return () => window.clearInterval(timer);
+  }, [runState, reducedMotion]);
+  const startMagic = () => { setStage(0); setRunState("running"); };
   return (
-    <div className="review-actions" aria-label="Review actions">
-      <p><span>Human review required</span>Proofline identifies the disagreement; it does not infer its cause.</p>
-      <div><button className="button quiet" type="button" onClick={() => { exportReviewedReport(); onDecision("Reviewed report exported"); }}>Export report</button><button className="button secondary" type="button" onClick={() => onDecision("Marked for investigation")}><Flag size={18} aria-hidden="true" />Mark for investigation</button><button className="button primary" type="button" onClick={() => onDecision("Finding confirmed")}><Check size={18} weight="bold" aria-hidden="true" />Confirm finding</button></div>
+    <div className="route-page company-page">
+      <PageHeader eyebrow="Home · Company dashboard" title={data.company.name} description={`${data.company.description} · ${data.session.period}`} actions={<><button className="button secondary" type="button" onClick={() => onNavigate("/files")}><FileArrowUp size={17} />Files & Sources</button><button className="button secondary" type="button" onClick={() => onNavigate("/reports")}><Receipt size={17} />Deep analysis</button><button className="button magic" type="button" onClick={startMagic} disabled={runState === "running"}><Sparkle size={17} weight="fill" />{runState === "running" ? "Running five checks…" : "Run Magic"}</button></>}><small className="page-disclosure">{data.session.persistence} · last updated {data.session.lastUpdated}</small></PageHeader>
+      {runState !== "idle" && <RunMagicProgress stage={stage} complete={runState === "complete"} />}
+      <HeadlineMetrics metrics={data.metrics} />
+      <TrendFigure data={data} onNavigate={onNavigate} />
+      <DashboardSignals data={data} />
+      <div className="company-bottom"><section className="summary-card"><p className="eyebrow">Factual summary</p><h2>Reported performance and narrative need one clear review.</h2><p>{data.summary}</p><div className="compact-statuses"><span><CheckCircle size={18} />6 <small>Supported</small></span><span><Info size={18} />2 <small>Uncertain</small></span><span><Warning size={18} />1 <small>Contradicted</small></span></div><div className="summary-actions"><button className="button primary" type="button" onClick={() => onNavigate("/review")}>Open Review Desk</button><button className="button secondary" type="button" onClick={(event) => onOpenAssistant(event.currentTarget)}><MagicWand size={17} />Open Magic Assistant</button></div></section><section className="priorities-card"><p className="eyebrow">Review priorities</p><h2>Where human judgment matters.</h2><ol>{data.reviewPriorities.map((item, index) => <li key={item.id}><span>{index + 1}</span><div><strong>{item.label}</strong><small>{item.status}</small></div></li>)}</ol><div className="evidence-flag"><Warning size={18} weight="fill" /><p><strong>Evidence flag</strong>The report states {data.review.claim.value}; cited figures calculate to {data.review.result.value}.</p></div><div className="report-row"><button className="inline-link" type="button" onClick={() => downloadReviewedReport(undefined, data)}>Export JSON evidence <DownloadSimple size={15} /></button><button className="inline-link disabled-link" type="button" disabled aria-describedby="pdf-help">PDF unavailable</button></div><small id="pdf-help">Server PDF export is not configured.</small></section></div>
+      <section className="source-section" aria-labelledby="source-set-title"><div className="section-heading"><div><p className="eyebrow">Source set</p><h2 id="source-set-title">Claims stay with their numbers.</h2></div><button className="inline-link" type="button" onClick={() => onNavigate("/files#sources")}>Open Files & Sources <ArrowRight size={15} /></button></div><div className="source-grid">{data.sources.map((source) => <SourceCard source={source} key={source.id} onOpen={onOpenSource} />)}</div></section>
     </div>
   );
 }
 
-function ReviewDesk({ onDelete, onNewReview, deleteButtonRef, cached = false }) {
-  const [announcement, setAnnouncement] = useState("");
-  return (
-    <div className="app-shell"><a className="skip-link" href="#review-content">Skip to review</a><Header onDelete={onDelete} onNewReview={onNewReview} deleteButtonRef={deleteButtonRef} />{cached && <div className="cache-banner" role="status"><Info size={18} aria-hidden="true" /><span><strong>Verified fallback loaded.</strong> Live extraction was unavailable, so this review uses the versioned cached demo result.</span></div>}<main id="review-content" className="review-layout" tabIndex="-1"><div className="review-main"><StatusSummary /><VisualVerdict /><ProofTrail /><ReviewActions onDecision={setAnnouncement} /></div><EvidenceRail /></main>
-      {announcement && <div className="toast" role="status"><CheckCircle size={20} weight="fill" aria-hidden="true" /><span><strong>{announcement}</strong><small>Recorded for this demo session.</small></span><button type="button" onClick={() => setAnnouncement("")} aria-label="Dismiss notification"><X size={16} /></button></div>}
-    </div>
-  );
-}
-
-function EmptyState({ onFilesSelected }) {
+function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, reducedMotion }) {
   const inputRef = useRef(null);
-  return (
-    <main className="state-page"><div className="state-wordmark">Proofline <span>Review Desk</span></div><section className="state-panel empty-panel" tabIndex="-1"><p className="eyebrow">New review</p><h1>Every financial claim needs a receipt.</h1><p>Select one allowlisted public PDF and its matching workbook. This prototype accepts filenames only and loads a verified mock result; it does not upload document contents.</p><input ref={inputRef} className="visually-hidden" type="file" multiple accept=".pdf,.xlsx" onChange={(event) => onFilesSelected([...event.target.files])} /><button autoFocus className="button primary" type="button" onClick={() => inputRef.current?.click()}>Select demo files <ArrowRight size={18} aria-hidden="true" /></button><div className="public-notice"><Info size={18} aria-hidden="true" /><span><strong>Public demo data only.</strong> Do not select confidential or personal documents.</span></div></section></main>
-  );
-}
-
-function LoadingState() {
-  const stages = ["Checking file types", "Validating mock contract", "Calculating registered metrics"];
-  return (
-    <main className="state-page" aria-live="polite" aria-busy="true"><div className="state-wordmark">Proofline <span>Review Desk</span></div><section className="state-panel" tabIndex="-1"><span className="loader" aria-hidden="true" /><p className="eyebrow">Preparing review</p><h1>Following the evidence trail.</h1><ul className="progress-list">{stages.map((stage, index) => <li key={stage} className={index < 2 ? "done" : "active"}>{index < 2 ? <Check size={16} /> : <MagnifyingGlass size={16} />} {stage}</li>)}</ul><p className="state-note">This mock processing state never implies that every page or cell was successfully parsed.</p></section></main>
-  );
-}
-
-function ErrorState({ onRetry }) {
-  return (
-    <main className="state-page" role="alert"><div className="state-wordmark">Proofline <span>Review Desk</span></div><section className="state-panel"><span className="state-icon error"><Warning size={28} weight="fill" aria-hidden="true" /></span><p className="eyebrow contradicted-text">Files not accepted</p><h1>Choose one PDF and one workbook.</h1><p>The selected files did not match this prototype’s narrow input contract. Nothing was uploaded or retained.</p><button autoFocus className="button primary" type="button" onClick={onRetry}>Choose different files</button></section></main>
-  );
-}
-
-function DeleteDialog({ onCancel, onConfirm }) {
-  const titleId = useId();
-  const cancelRef = useRef(null);
+  const [state, setState] = useState("empty");
+  const [files, setFiles] = useState([]);
+  const [stage, setStage] = useState(0);
+  const [session, setSession] = useState(null);
+  const [sessionMessage, setSessionMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
   useEffect(() => {
-    cancelRef.current?.focus();
-    const handleKeyDown = (event) => { if (event.key === "Escape") onCancel(); };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onCancel]);
+    if (state !== "loading") return undefined;
+    const timer = window.setInterval(() => setStage((value) => {
+      if (value >= runMagicStages.length - 1) {
+        window.clearInterval(timer);
+        setState("ready");
+        onFixtureReady?.();
+        return value;
+      }
+      return value + 1;
+    }), reducedMotion || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 25 : 240);
+    return () => window.clearInterval(timer);
+  }, [state, reducedMotion]);
+  const sources = Array.isArray(data?.sources) ? data.sources : [];
+  const query = search.trim().toLowerCase();
+  const visibleSources = sources.filter((source) => (filter === "all" || (filter === "ready" ? source.status === "Validated" : source.status !== "Validated")) && (!query || `${source.name} ${source.kind} ${source.date} ${source.provenance} ${source.anchor}`.toLowerCase().includes(query)));
+  const expected = [sources[0]?.name, sources[1]?.name].filter(Boolean);
+  const expectedCopy = expected.length === 2 ? `${expected[0]} and ${expected[1]}` : "the configured report PDF and workbook";
+  const choose = async (selected) => {
+    const names = selected.map((file) => file.name);
+    setFiles(names);
+    setStage(0);
+    if (session) {
+      if (selected.length !== 2 || !selected.some((file) => file.name.toLowerCase().endsWith(".pdf")) || !selected.some((file) => file.name.toLowerCase().endsWith(".xlsx"))) {
+        setState("error");
+        setSessionMessage("Choose one PDF financial report and one XLSX evidence workbook.");
+        return;
+      }
+      setState("loading");
+      setSessionMessage("Uploading and checking both files in the temporary private session.");
+      try {
+        const results = await Promise.all(selected.map((file) => uploadSource(session, file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook", file)));
+        setFiles(results.map((item, index) => item?.display_name || item?.file?.display_name || selected[index]?.name).filter(Boolean));
+        setState("ready");
+        setSessionMessage("Both private-session files passed the source-library checks.");
+      } catch (error) {
+        setState("error");
+        setSessionMessage(error instanceof Error ? error.message : "The files could not be checked safely.");
+      }
+      return;
+    }
+    setState(expected.length === 2 && selected.length === 2 && expected.every((name) => names.includes(name)) ? "loading" : "error");
+  };
+  const startPrivateSession = async () => {
+    setSessionMessage("Starting a temporary private session…");
+    try {
+      const next = await createSourceSession();
+      setSession(next);
+      setState("empty");
+      setFiles([]);
+      setSessionMessage("Temporary session ready. Files expire after 30 minutes idle or two hours absolute in this running process.");
+    } catch (error) {
+      setSessionMessage(error instanceof Error ? error.message : "A private session is not available in this deployment.");
+    }
+  };
+  const liveRole = state === "error" ? "alert" : "status";
+  const heading = state === "ready" ? "Sources are ready." : state === "error" ? "The source set needs attention." : state === "loading" ? session ? "Uploading and checking sources." : "Following the fixture evidence trail." : session ? "Add the two required files." : "Try the verified fixture.";
+  const detail = sessionMessage || (state === "error" ? `The filenames did not match ${expectedCopy}. Nothing was uploaded, read, or retained.` : session ? "Choose one PDF financial report and one XLSX evidence workbook." : `The demo only checks the filenames ${expectedCopy}; it does not read or upload their contents.`);
+  const slotStatus = state === "error" ? "Needs attention" : state === "loading" ? "Checking" : state === "ready" ? "Ready" : "Waiting";
   return (
-    <div className="modal-backdrop" role="presentation"><section className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId}><span className="state-icon error"><Trash size={24} aria-hidden="true" /></span><p className="eyebrow contradicted-text">Delete session</p><h1 id={titleId}>Remove this review?</h1><p>This clears the in-browser demo state. The prototype has no database and does not claim deletion from systems it does not use.</p><div className="dialog-actions"><button ref={cancelRef} className="button secondary" type="button" onClick={onCancel}>Keep review</button><button className="button danger-button" type="button" onClick={onConfirm}>Delete session</button></div></section></div>
+    <div className="route-page files-sources-page">
+      <PageHeader eyebrow="Files & Sources" title="Bring the report and the numbers together." description="Start with the verified fixture or open a temporary private session when the source service is available." actions={<StatusTag tone={session ? "success" : "neutral"}>{session ? "Private session" : "Public fixture"}</StatusTag>} />
+      <section className="upload-panel" aria-labelledby="files-review-title">
+        <div className="upload-icon"><Files size={28} /></div>
+        <div role={liveRole} aria-live={state === "error" ? "assertive" : "polite"}>
+          <p className="eyebrow">Files in this review</p>
+          <h2 id="files-review-title">{heading}</h2>
+          <p>{detail}</p>
+        </div>
+        <input ref={inputRef} className="visually-hidden" tabIndex="-1" aria-label={session ? "Select financial report PDF and evidence workbook" : "Select the two named demo files"} type="file" multiple accept=".pdf,.xlsx" onChange={(event) => choose([...event.target.files])} />
+        {state === "loading" && (session ? <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>Uploading · Checking</strong><small>Ready only after the server accepts both canonical file types.</small></div> : <RunMagicProgress stage={stage} complete={false} />)}
+        <div className="file-slot-grid" aria-label="Required review files">
+          {[{ role: "report_pdf", label: "Financial report", kind: "PDF", name: files.find((name) => name.toLowerCase().endsWith(".pdf")) || expected.find((name) => name.toLowerCase().endsWith(".pdf")) }, { role: "workbook", label: "Evidence workbook", kind: "XLSX", name: files.find((name) => name.toLowerCase().endsWith(".xlsx")) || expected.find((name) => name.toLowerCase().endsWith(".xlsx")) }].map((slot) => <article className="file-slot" key={slot.role}><span className="file-kind">{slot.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{slot.kind}</span><div><h3>{slot.label}</h3><p>{slot.name || "No file selected"}</p></div><StatusTag tone={state === "ready" ? "success" : state === "error" ? "warning" : "neutral"}>{slotStatus}</StatusTag>{files.length > 0 && state !== "loading" && <button className="inline-link" type="button" onClick={() => { setFiles((current) => current.filter((name) => name !== slot.name)); setState("empty"); }}>Remove</button>}</article>)}
+        </div>
+        <div className="upload-actions">
+          <button className="button primary" type="button" disabled={!session && expected.length !== 2} onClick={() => inputRef.current?.click()}>{state === "error" ? "Choose different files" : session ? "Add private-session files" : "Select named demo files"}</button>
+          <button className="button secondary" type="button" disabled={expected.length !== 2} onClick={() => { setSession(null); setSessionMessage(""); setFiles(expected); setState("loading"); setStage(0); }}>Use verified fixture without files</button>
+          {!session && <button className="button quiet" type="button" onClick={startPrivateSession}>Start private session</button>}
+          <button className="button magic" type="button" disabled={state !== "ready"} onClick={() => onNavigate("/company")}><Sparkle size={17} />Open company workspace</button>
+        </div>
+        <div className="public-notice"><Info size={18} /><span><strong>{session ? "Temporary private session." : "Public demo boundary."}</strong>{session ? " Files expire after 30 minutes idle or two hours absolute. Deletion guarantees require the server receipt; backups and logs are excluded." : " No file contents are read or uploaded in the fixture path. Do not choose confidential documents."}</span></div>
+      </section>
+      <section className="source-library-section" id="sources" tabIndex="-1" aria-labelledby="source-library-title">
+        <div className="section-heading"><div><p className="eyebrow">Source Library</p><h2 id="source-library-title">Evidence with a visible address.</h2><p>Search status, period, provenance, and anchors from the current analysis contract.</p></div><StatusTag tone="success">{visibleSources.length} of {sources.length} sources</StatusTag></div>
+        <div className="source-tools"><label><span className="visually-hidden">Search sources</span><MagnifyingGlass size={17} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search filename, period, anchor…" aria-label="Search sources" /></label><label className="select-control">Status<span className="select-shell"><select aria-label="Filter sources by status" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All statuses</option><option value="ready">Validated</option><option value="attention">Needs attention</option></select><CaretDown size={15} weight="bold" aria-hidden="true" /></span></label></div>
+        {visibleSources.length ? <div className="library-list">{visibleSources.map((source, index) => <article key={source.id} id={source.id} tabIndex="-1" style={{ "--reveal-order": index }}><span className="library-icon">{source.kind === "PDF" ? <FilePdf size={22} /> : <Table size={22} />}</span><div><h3>{source.name}</h3><p>{source.date} · {source.anchor}</p><small>{source.provenance}</small></div><StatusTag tone={source.status === "Validated" ? "success" : "warning"}>{source.status}</StatusTag><button className="button secondary" type="button" onClick={(event) => onOpenSource(source, event.currentTarget)}>Open evidence</button></article>)}</div> : <div className="source-empty" role="status"><MagnifyingGlass size={24} /><strong>No sources match this view.</strong><button className="inline-link" type="button" onClick={() => { setSearch(""); setFilter("all"); }}>Clear search and filter</button></div>}
+        <div className="fixture-note wide"><Info size={17} /><p><strong>Adapter boundary</strong>These cards consume stable source IDs from the current analysis contract; private-session mutations use the source-library adapter and never persist its CSRF capability.</p></div>
+      </section>
+    </div>
   );
 }
 
-function Receipt({ onStart }) {
+function SourceLibraryPage({ data, onOpenSource }) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const query = search.trim().toLowerCase();
+  const visible = data.sources.filter((source) => (filter === "all" || (filter === "ready" ? source.status === "Validated" : source.status !== "Validated")) && (!query || `${source.name} ${source.kind} ${source.date} ${source.provenance} ${source.anchor}`.toLowerCase().includes(query)));
+  return <div className="route-page"><PageHeader eyebrow="Source Library" title="Evidence with a visible address." description="Search source status, period, provenance, and anchors from the current analysis contract." actions={<StatusTag tone="success">{visible.length} of {data.sources.length} sources</StatusTag>} /><div className="source-tools"><label><span className="visually-hidden">Search sources</span><MagnifyingGlass size={17} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search filename, period, anchor…" aria-label="Search sources" /></label><label className="select-control">Status<span className="select-shell"><select aria-label="Filter sources by status" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All statuses</option><option value="ready">Validated</option><option value="attention">Needs attention</option></select><CaretDown size={15} weight="bold" aria-hidden="true" /></span></label></div>{visible.length ? <div className="library-list">{visible.map((source, index) => <article key={source.id} id={source.id} tabIndex="-1" style={{ "--reveal-order": index }}><span className="library-icon">{source.kind === "PDF" ? <FilePdf size={22} /> : <Table size={22} />}</span><div><h2>{source.name}</h2><p>{source.date} · {source.anchor}</p><small>{source.provenance}</small></div><StatusTag tone={source.status === "Validated" ? "success" : "warning"}>{source.status}</StatusTag><button className="button secondary" type="button" onClick={(event) => onOpenSource(source, event.currentTarget)}>Open evidence</button></article>)}</div> : <section className="route-state compact" role="status"><MagnifyingGlass size={24} /><h2>No sources match this view.</h2><button className="inline-link" type="button" onClick={() => { setSearch(""); setFilter("all"); }}>Clear search and filter</button></section>}<div className="fixture-note wide"><Info size={17} /><p><strong>Stable evidence IDs</strong>These cards render from the typed analysis/session adapter and keep source anchors one click away.</p></div></div>;
+}
+
+function HistoryPage({ data, onNavigate }) {
+  return <div className="route-page"><PageHeader eyebrow="History" title="Verified demo activity." description="These scripted entries demonstrate the history layout. They do not update, sync, or persist." actions={<StatusTag>Static fixture</StatusTag>} /><section className="history-list">{data.history.map((item) => <button type="button" key={item.id} onClick={() => onNavigate(item.route)}><span className="history-dot" aria-hidden="true" /><span><strong>{item.label}</strong><small>{item.time}</small></span><StatusTag tone={item.status === "Contradicted" ? "warning" : "neutral"}>{item.status}</StatusTag><ArrowRight size={17} /></button>)}</section><section className="route-state compact"><ClockCounterClockwise size={26} /><h2>No live history is connected.</h2><p>A storage service is required before MagicFin can show activity from real sessions.</p></section></div>;
+}
+
+function ForecastPanel({ forecast, currency = "USD millions" }) {
+  const [historyCount, setHistoryCount] = useState(4);
+  const available = historyCount >= forecast.minimumHistory;
+  const currencyCode = currency.split(" ")[0];
+  return <section className="forecast-panel" aria-labelledby="forecast-title"><div className="section-heading"><div><p className="eyebrow">Guarded outlook</p><h2 id="forecast-title">Bounded revenue scenarios, separated from reported history.</h2></div><label className="select-control">History available<span className="select-shell"><select aria-label="Forecast history available" value={historyCount} onChange={(event) => setHistoryCount(Number(event.target.value))}><option value="4">4 reported periods</option><option value="2">2 reported periods</option></select><CaretDown size={15} weight="bold" aria-hidden="true" /></span></label></div><p className="forecast-warning"><Warning size={17} />Illustrative deterministic range—not reported history, a recommendation, or a causal forecast.</p>{available ? <><dl className="forecast-method"><div><dt>Method</dt><dd>{forecast.method}</dd></div><div><dt>Inputs</dt><dd>{forecast.inputs}</dd></div><div><dt>Assumptions</dt><dd>{forecast.assumptions}</dd></div></dl><div className="table-wrap forecast-table"><table><caption>Illustrative revenue forecast range, {currency}</caption><thead><tr><th scope="col">Forecast period</th><th scope="col">Low</th><th scope="col">Baseline</th><th scope="col">High</th><th scope="col">History type</th></tr></thead><tbody>{forecast.ranges.map((row) => <tr key={row.period}><th scope="row">{row.period}</th><td>{currencyCode} {row.low.toLocaleString()}m</td><td>{currencyCode} {row.base.toLocaleString()}m</td><td>{currencyCode} {row.high.toLocaleString()}m</td><td>Forecast range</td></tr>)}</tbody></table></div></> : <div className="forecast-refusal" role="status"><Warning size={25} /><div><strong>Outlook unavailable: insufficient history.</strong><p>At least {forecast.minimumHistory} reported periods are required. MagicFin will not invent missing history.</p></div></div>}</section>;
+}
+
+function ReportsPage({ data, onNavigate }) {
+  const [message, setMessage] = useState("");
+  const [pdfState, setPdfState] = useState({ mode: "idle", message: "" });
+  const isDemo = data.session.mode === "verified_fixture";
+  const downloadPdf = async () => {
+    setPdfState({ mode: "preparing", message: "Preparing the performance brief…" });
+    try {
+      const result = await requestReviewedPdf({ bundle: getReviewedReportBundle(data) });
+      setPdfState({ mode: "success", message: `${result.filename} downloaded.` });
+    } catch (error) {
+      setPdfState({ mode: "error", message: error instanceof Error ? error.message : "The reviewed PDF could not be prepared. Please try again." });
+    }
+  };
+  const downloadDemoPdf = () => {
+    setPdfState({ mode: "preparing", message: "Preparing the demo performance brief…" });
+    window.setTimeout(() => {
+      try {
+        const url = URL.createObjectURL(buildDeterministicDemoPdf(data));
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = "magicfin-demo-performance-brief.pdf";
+        anchor.hidden = true;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        setPdfState({ mode: "success", message: "Demo performance brief downloaded." });
+      } catch (error) {
+        setPdfState({ mode: "error", message: error instanceof Error ? error.message : "The demo PDF could not be prepared. Please try again." });
+      }
+    }, 180);
+  };
+  const pdfAction = isDemo
+    ? <button className="button secondary" type="button" onClick={downloadDemoPdf} disabled={pdfState.mode === "preparing"}><FilePdf size={17} />{pdfState.mode === "preparing" ? "Preparing PDF…" : pdfState.mode === "error" ? "Retry demo PDF" : "Prepare demo PDF"}</button>
+    : <button className="button secondary" type="button" onClick={downloadPdf} disabled={pdfState.mode === "preparing"}><FilePdf size={17} />{pdfState.mode === "preparing" ? "Preparing PDF…" : pdfState.mode === "error" ? "Retry PDF" : "Download PDF"}</button>;
   return (
-    <main className="state-page" aria-live="polite"><div className="state-wordmark">Proofline <span>Review Desk</span></div><section className="state-panel receipt"><span className="state-icon success"><Check size={26} weight="bold" aria-hidden="true" /></span><p className="eyebrow supported-text">Deletion receipt</p><h1>Session cleared.</h1><dl><div><dt>Scope</dt><dd>In-browser demo review state</dd></div><div><dt>Completed</dt><dd>22 August 2026 · 10:24 MYT</dd></div><div><dt>Receipt</dt><dd>PL-DEMO-0822-1024</dd></div></dl><button autoFocus className="button primary" type="button" onClick={onStart}>Start a new review</button></section></main>
+    <div className="route-page deep-analysis-page">
+      <PageHeader eyebrow="Reports · Board / CFO / investor" title="Board performance brief" description={`Decision-useful reported performance for ${data.company.name}, with material variances, context, and a guarded outlook.`} actions={<><button className="button primary" type="button" onClick={() => downloadReviewedReport(setMessage, data)}><DownloadSimple size={17} />Download JSON</button>{pdfAction}</>}><small className="page-disclosure" role={pdfState.mode === "error" ? "alert" : "status"} aria-live="polite">{pdfState.message || (isDemo ? "The demo PDF is generated from the same reviewed fixture snapshot." : "Reviewed reports are prepared from the current validated analysis snapshot.")}</small></PageHeader>
+      <section className="executive-brief" aria-labelledby="executive-brief-title"><div><p className="eyebrow">Performance at a glance</p><h2 id="executive-brief-title">Growth and operating margin improved; liquidity softened.</h2><p>{data.summary}</p></div><dl><div><dt>Reported period</dt><dd>{data.session.period}</dd></div><div><dt>Audience</dt><dd>Board, finance leadership, and informed investors</dd></div><div><dt>Boundary</dt><dd>Reported data plus bounded scenarios; no recommendation or causal claim</dd></div></dl></section>
+      <HeadlineMetrics metrics={data.metrics} context="brief" />
+      <TrendFigure data={data} />
+      <section className="ratio-section" aria-labelledby="ratio-title"><div className="section-heading"><div><p className="eyebrow">Financial ratios</p><h2 id="ratio-title">Profitability, liquidity, leverage, cash flow, and efficiency.</h2></div></div><div className="table-wrap"><table><caption>Secondary {data.session.period} ratios with period, change, and source</caption><thead><tr><th scope="col">Category</th><th scope="col">Metric</th><th scope="col">Period</th><th scope="col">Value</th><th scope="col">Change</th><th scope="col">Source</th></tr></thead><tbody>{data.secondaryRatios.map((item) => <tr key={item.label}><th scope="row">{item.category}</th><td><span className="metric-label">{item.label}<MetricDefinitionButton metricId={item.id} source={item.source} /></span></td><td>{item.period}</td><td>{item.value}</td><td>{item.delta}</td><td>{item.source}</td></tr>)}</tbody></table></div></section>
+      <section className="narrative-outcome" aria-labelledby="narrative-outcome-title"><div><p className="eyebrow">Narrative vs numbers</p><h2 id="narrative-outcome-title">The growth statement does not reconcile with the cited inputs.</h2><p>The report states <strong>{data.review.claim.value}</strong>; the calculation from the reported periods is <strong>{data.review.result.value}</strong>, a <strong>{data.review.result.difference}</strong> variance.</p></div><button className="inline-link" type="button" onClick={() => onNavigate("/review#annual-report")}>Verify this outcome <ArrowRight size={14} /></button></section>
+      <section className="material-signals" aria-labelledby="material-signals-title"><div className="section-heading"><div><p className="eyebrow">Material variances & risks</p><h2 id="material-signals-title">Items that may change the discussion.</h2></div></div><div>{data.analysisSignals.slice(1).map((item) => <article key={item.label}><span>{item.label}</span><strong>{item.value}</strong><p>{item.detail}</p></article>)}</div></section>
+      <ForecastPanel forecast={data.forecast} currency={data.company.currency} />
+      <section className="economic-context" aria-labelledby="economic-title"><div className="section-heading"><div><p className="eyebrow">Sourced economic context</p><h2 id="economic-title">Background indicators, not explanations.</h2></div></div><p className="context-caveat"><Info size={17} />Context only; no causal relationship is asserted.</p><div className="context-list">{data.economicContext.map((item) => <article key={item.label}><div><h3>{item.label}</h3><strong>{item.value}</strong></div><dl><div><dt>Geography</dt><dd>{item.geography}</dd></div><div><dt>Period / unit</dt><dd>{item.period} · {item.unit}</dd></div><div><dt>Source date</dt><dd>{item.source} · {item.sourceDate}</dd></div><div><dt>Comparability</dt><dd>{item.comparability}</dd></div></dl></article>)}</div></section>
+      <section className="management-questions" aria-labelledby="management-questions-title"><p className="eyebrow">Board agenda</p><h2 id="management-questions-title">Questions for the next performance discussion.</h2><ol>{data.managementQuestions.map((question, index) => <li key={question}><span>{index + 1}</span><p>{question}</p></li>)}</ol><small>Questions are generated from the bounded analysis contract. They are not recommendations or financial advice.</small></section>
+      <section className="report-methodology" aria-labelledby="methodology-title"><div><p className="eyebrow">Methodology & limitations</p><h2 id="methodology-title">A brief with a visible decision boundary.</h2><p>Reported values and ratios retain their periods, units, and source methods. Illustrative ranges use {data.forecast.method.toLowerCase()} and do not include acquisitions, currency remeasurement, or macroeconomic causality.</p></div><dl><div><dt>Coverage</dt><dd>{data.trend.length} reported periods; {data.metrics.length} primary metrics; {data.secondaryRatios.length} secondary ratios</dd></div><div><dt>Economic context</dt><dd>Contextual comparison only; not evidence of company-specific cause</dd></div><div><dt>Exports</dt><dd>{isDemo ? "Deterministic demo PDF and JSON" : "Validated service PDF and JSON"}</dd></div><div><dt>Limitations</dt><dd>No investment recommendation, assurance opinion, persistence claim, or live-model inference</dd></div></dl></section>
+      {message && <div className="toast" role="status"><CheckCircle size={20} /><span><strong>{message}</strong><small>Generated from the verified fixture.</small></span><button type="button" onClick={() => setMessage("")} aria-label="Dismiss notification"><X size={16} /></button></div>}
+    </div>
   );
 }
 
-export function App({ initialScreen = "review", processingDelay = 850 }) {
-  const [screen, setScreen] = useState(initialScreen);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const deleteButtonRef = useRef(null);
+function ProfilePage() { return <div className="route-page"><PageHeader eyebrow="Profile" title="A local demo identity." description="No account exists in this frontend prototype." /><section className="settings-card"><div className="profile-mark" aria-hidden="true">DR</div><div><h2>Demo reviewer</h2><p>Local fixture workspace · not signed in</p></div><StatusTag>Not persisted</StatusTag></section><section className="route-state compact"><UserCircle size={28} /><h2>Profile syncing is unavailable.</h2><p>Connect a real authentication and profile service before enabling saved names, teams, or preferences.</p></section></div>; }
+
+function SettingsPage({ reducedMotion, compactSources, onReducedMotion, onCompactSources, initialProviderMode = "not_configured" }) {
+  const [providerMode, setProviderMode] = useState(initialProviderMode);
+  const provider = getProviderConnectionAdapter(providerMode);
+  const testConnection = () => {
+    setProviderMode("loading");
+    window.setTimeout(() => setProviderMode(initialProviderMode), 300);
+  };
+  return <div className="route-page"><PageHeader eyebrow="Settings" title="Make the desk comfortable." description="Display preferences affect this browser session only. Provider credentials remain server-side." /><section className="settings-list"><label><span><strong>Reduce interface motion</strong><small>Minimize panel, progress, and route transitions. Your system preference is respected by default.</small></span><input aria-label="Reduce interface motion" type="checkbox" checked={reducedMotion} onChange={(event) => onReducedMotion(event.target.checked)} /></label><label><span><strong>Compact source cards</strong><small>Use a tighter reading density on large screens.</small></span><input aria-label="Compact source cards" type="checkbox" checked={compactSources} onChange={(event) => onCompactSources(event.target.checked)} /></label></section><section className="provider-settings" aria-labelledby="provider-settings-title"><div className="section-heading"><div><p className="eyebrow">Magic Assistant</p><h2 id="provider-settings-title">Provider connection</h2></div><StatusTag tone={provider.tone}>{provider.status}</StatusTag></div><dl><div><dt>Provider</dt><dd>Google</dd></div><div><dt>Model</dt><dd><code>gemma-4-26b-a4b-it</code></dd></div><div><dt>Last successful test</dt><dd>{provider.lastSuccessfulTest}</dd></div></dl><div className="provider-status" role={providerMode === "error" ? "alert" : "status"} aria-live="polite" aria-busy={providerMode === "loading"}><p>{provider.description}</p><button className="button secondary" type="button" onClick={testConnection} disabled={providerMode === "loading"}>{providerMode === "loading" ? "Testing connection…" : providerMode === "error" ? "Retry connection" : "Test connection"}</button></div><div className="fixture-note wide"><LockKey size={17} /><p><strong>No browser API key</strong>The deployment owner sets the key server-side. This frontend calls only MagicFin’s authenticated, provider-neutral endpoint and never stores a key in the client bundle, local storage, or logs.</p></div></section><div className="fixture-note wide"><Info size={17} /><p><strong>Session-only preference</strong>These working display settings are not saved after reload.</p></div></div>;
+}
+
+function SignInPage() { return <div className="route-page"><PageHeader eyebrow="Sign in" title="Accounts are not configured yet." description="The verified demo remains available without an account." /><section className="sign-in-panel"><LockKey size={32} /><h2>No fake login.</h2><p>MagicFin will only enable sign-in after a server-side authentication flow and truthful retention controls are connected.</p><button className="button secondary" type="button" disabled>Sign in unavailable</button></section></div>; }
+
+function PrivacyPage() { return <div className="route-page prose-page"><PageHeader eyebrow="Privacy & data" title="What this prototype actually does." /><section><h2>Files</h2><p>The public fixture checks selected filenames in your browser and does not send file contents to a server. A configured private session sends only files you explicitly choose to the temporary source service.</p><h2>Session data</h2><p>Fixture review state is browser-local. Configured private sessions expire after 30 minutes idle or two hours absolute in the running service; no durable persistence is claimed.</p><h2>Deletion</h2><p>“Clear demo session” clears the in-browser state shown by this prototype. It does not claim deletion from services that are not configured.</p><h2>Magic Assistant</h2><p>Magic Assistant uses verified scripted responses with citations unless a server-side provider is configured. No browser API key is used.</p></section></div>; }
+
+function LegalPage() { return <div className="route-page prose-page"><PageHeader eyebrow="Legal & limitations" title="Evidence support, not financial advice." /><section><h2>Prototype scope</h2><p>MagicFin is a demonstration interface using synthetic, human-checked demo data. It does not contain issuer documents.</p><h2>Human judgment</h2><p>Calculated discrepancies require reviewer confirmation. Illustrative deterministic forecast ranges are clearly separated from reported history; they are not investment advice, recommendations, causal explanations, or model predictions.</p><h2>Exports</h2><p>The static demo includes a deterministic fixture PDF and JSON evidence export. Live reviewed PDFs are prepared only from a validated report snapshot.</p></section></div>; }
+
+function NotFoundPage({ onNavigate }) { return <div className="route-page"><section className="route-state"><Warning size={32} /><p className="eyebrow">Page not found</p><h1>This trail stops here.</h1><p>The requested MagicFin route is not part of this prototype.</p><button className="button primary" type="button" onClick={() => onNavigate("/")}>Return home</button></section></div>; }
+
+function CitationDrawer({ source, onClose, onNavigate, returnRef }) {
+  const panelRef = useRef(null);
+  useDismissible(Boolean(source), onClose, returnRef, panelRef);
+  if (!source) return null;
+  const destination = source.reviewRoute || source.route || "/review";
+  const destinationLabel = destination.startsWith("/review") ? "Open in Review Desk" : "Open in Files & Sources";
+  return <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><aside ref={panelRef} className="citation-drawer" role="dialog" aria-modal="true" aria-labelledby="citation-title" tabIndex="-1"><div className="panel-title"><div><p className="eyebrow">Cited source</p><h2 id="citation-title">{source.name || source.label}</h2></div><button type="button" onClick={onClose} aria-label="Close source drawer"><X size={20} /></button></div><StatusTag tone={source.status === "Review needed" ? "warning" : "success"}>{source.status || "Source-linked"}</StatusTag><dl className="citation-details"><div><dt>Location</dt><dd>{source.anchor}</dd></div><div><dt>Period</dt><dd>{source.period || source.date || productFixture.session.period}</dd></div><div><dt>Provenance</dt><dd>{source.provenance || "Verified fixture citation"}</dd></div></dl><blockquote>{source.detail || `This fixture source anchors the reviewed evidence at ${source.anchor}. No original issuer file is bundled.`}</blockquote><button className="button primary" type="button" onClick={() => { onClose(); onNavigate(destination); }}>{destinationLabel} <ArrowRight size={16} /></button></aside></div>;
+}
+
+function AssistantChart({ data, onOpenCitation }) {
+  const [showTable, setShowTable] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [focused, setFocused] = useState(false);
+  const expandRef = useRef(null);
+  const focusedRef = useRef(null);
+  const specs = getAssistantChartSpecs(data);
+  const spec = specs[selectedIndex] || specs[0];
   useEffect(() => {
-    if (screen !== "loading") return undefined;
-    const timer = window.setTimeout(() => setScreen("cached"), processingDelay);
+    if (!focused) return undefined;
+    window.setTimeout(() => focusedRef.current?.focus(), 0);
+    return () => window.setTimeout(() => expandRef.current?.focus(), 0);
+  }, [focused]);
+  if (!spec) return <div className="assistant-chart-state" role="status"><Info size={18} /><span><strong>No validated chart proposal.</strong><small>The cited answer remains available without a visual.</small></span></div>;
+  const currencyCode = spec.currency.split(" ")[0];
+  const metric = { key: "value", label: spec.label, unit: spec.unit, color: "#5e4b8b", format: (value) => spec.metricKey === "revenue" ? `${currencyCode} ${Number(value).toLocaleString()}m` : `${Number(value).toLocaleString()}${spec.unit.includes("Percent") ? "%" : ""}` };
+  const selectChart = (index, trigger) => {
+    setSelectedIndex(index);
+    setShowTable(false);
+    const next = specs[index];
+    if (next?.sources[0]) onOpenCitation(next.sources[0], trigger);
+  };
+  const move = (delta, trigger) => selectChart((selectedIndex + delta + specs.length) % specs.length, trigger);
+  const onFocusedKeyDown = (event) => {
+    if (!focused) return;
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setFocused(false); return; }
+    if (event.key !== "Tab") return;
+    const focusable = [...focusedRef.current.querySelectorAll('button:not([disabled]), [tabindex="0"]')];
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === focusedRef.current)) { event.preventDefault(); last.focus(); }
+    if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
+  const card = <section ref={focused ? focusedRef : undefined} className={`assistant-chart-card ${focused ? "focused" : ""}`} role={focused ? "dialog" : undefined} aria-modal={focused ? "true" : undefined} aria-labelledby="assistant-chart-title" tabIndex={focused ? -1 : undefined} onKeyDown={onFocusedKeyDown}><div className="assistant-chart-toolbar"><div><span>Calculated from source data</span><h3 id="assistant-chart-title">{spec.title}</h3><small>{spec.series[0].period}–{spec.series[spec.series.length - 1].period} · {spec.unit}</small></div><button ref={expandRef} type="button" className="chart-focus-button" onClick={() => setFocused((current) => !current)} aria-label={focused ? "Close focused chart" : "Open focused chart"}>{focused ? <ArrowsIn size={17} /> : <ArrowsOut size={17} />}<span>{focused ? "Close focus" : "Focus chart"}</span></button></div>{specs.length > 1 && <div className="assistant-chart-nav"><div role="tablist" aria-label="Generated charts">{specs.map((item, index) => <button key={item.id} type="button" role="tab" aria-selected={index === selectedIndex} tabIndex={index === selectedIndex ? 0 : -1} onClick={(event) => selectChart(index, event.currentTarget)}>{item.label}</button>)}</div><span><button type="button" onClick={(event) => move(-1, event.currentTarget)} aria-label="Previous generated chart"><CaretLeft size={16} /></button><small>{selectedIndex + 1} / {specs.length}</small><button type="button" onClick={(event) => move(1, event.currentTarget)} aria-label="Next generated chart"><CaretRight size={16} /></button></span></div>}<div className="assistant-chart" role="img" tabIndex="0" aria-label={`${spec.title}, calculated from cited source data`}><Suspense fallback={<div className="chart-loading" role="status">Loading cited chart…</div>}><TrendChart trend={spec.series} metric={metric} /></Suspense></div><div className="assistant-chart-sources" aria-label="Chart sources">{spec.sources.map((source) => <button key={source.id} type="button" onClick={(event) => onOpenCitation(source, event.currentTarget)}><Files size={14} />{source.name}</button>)}</div><div className="assistant-chart-footer"><span>Validated chart proposal · deterministic values</span><button className="inline-link" type="button" aria-expanded={showTable} onClick={() => setShowTable((current) => !current)}>{showTable ? "Hide" : "View"} chart data table</button></div>{showTable && <div className="table-wrap"><table><caption>{spec.title}; calculated from source data</caption><thead><tr><th scope="col">Period</th><th scope="col">{spec.label}</th><th scope="col">Source</th></tr></thead><tbody>{spec.series.map((row) => <tr key={row.period}><th scope="row">{row.period}</th><td>{metric.format(row.value)}</td><td>{spec.sources[0].name}</td></tr>)}</tbody></table></div>}</section>;
+  return focused ? <div className="focused-chart-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFocused(false); }}>{card}</div> : card;
+}
+
+function AssistantPanel({ open, onClose, onOpenCitation, returnRef, data, initialMode = "verified_demo", sourceOpen = false }) {
+  const panelRef = useRef(null);
+  const conversationRef = useRef(null);
+  const [mode, setMode] = useState(initialMode);
+  const [suggestionId, setSuggestionId] = useState("growth");
+  const response = useMemo(() => getAssistantAdapter(mode, data), [mode, data]);
+  const selectedSuggestion = response.suggestions?.find((item) => item.id === suggestionId);
+  const answer = selectedSuggestion ? { ...response, ...selectedSuggestion } : response;
+  useDismissible(open, onClose, returnRef, panelRef);
+  useEffect(() => {
+    if (!open || !conversationRef.current) return;
+    conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
+  }, [open, suggestionId, mode]);
+  if (!open) return null;
+  return <aside ref={panelRef} className="assistant-panel" role="dialog" aria-modal={sourceOpen ? undefined : "true"} aria-hidden={sourceOpen ? "true" : undefined} inert={sourceOpen} aria-labelledby="assistant-title" tabIndex="-1"><div className="panel-title"><div><p className="eyebrow">Magic Assistant</p><h2 id="assistant-title">Ask the fixture, inspect the evidence.</h2></div><button type="button" onClick={onClose} aria-label="Close Magic Assistant"><X size={20} /></button></div><StatusTag tone={mode === "verified_demo" ? "success" : mode === "error" || mode === "offline" ? "warning" : "neutral"}>{response.notice}</StatusTag>{mode === "verified_demo" ? <div ref={conversationRef} className="assistant-conversation"><section className="suggested-questions" aria-labelledby="suggested-title"><h3 id="suggested-title">Try a verified demo question</h3>{response.suggestions.map((item) => <button key={item.id} type="button" aria-pressed={suggestionId === item.id} onClick={() => setSuggestionId(item.id)}>{item.label}</button>)}</section><div className="user-message"><span>Selected question</span><p>{answer.label || answer.prompt}</p></div><div className="assistant-message" aria-live="polite"><div className="answer-block calculated"><span>Calculated result</span><strong>{answer.calculated}</strong><small>{answer.formula}</small></div><div className="answer-block"><span>Assistant analysis</span><p>{answer.analysis}</p></div><div className="assistant-source-pills" aria-label="Response sources">{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={13} />{citation.label}</button>)}</div><AssistantChart data={data} onOpenCitation={onOpenCitation} /><div className="assistant-citations"><div><span>Cited sources</span><small>{response.citations.length} linked anchors</small></div>{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={17} /><span><strong>{citation.label}</strong><small>{citation.detail}</small></span><CaretRight size={15} /></button>)}</div></div></div> : <section className="assistant-state" role={mode === "error" ? "alert" : "status"} aria-busy={mode === "loading"}>{mode === "loading" ? <span className="loader" aria-hidden="true" /> : <Warning size={28} />}<h3>{response.notice}</h3><p>{response.analysis}</p>{mode === "error" && <button className="button secondary" type="button" onClick={() => setMode("verified_demo")}>Retry fixture demo</button>}</section>}<div className="assistant-composer unavailable"><strong>Free-form questions unavailable</strong><p>Connect a server-side model provider to enable typed questions. No browser API key is used.</p><div><textarea id="assistant-input" aria-label="Free-form questions unavailable" rows="2" placeholder="Provider not configured" disabled onInput={(event) => { event.currentTarget.style.height = "auto"; event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`; }} /><button type="button" disabled aria-label="Send message unavailable"><PaperPlaneTilt size={18} /></button></div><small>Preview provider boundary states:</small><div className="state-switcher" aria-label="Assistant demo states">{["verified_demo", "not_configured", "offline", "loading", "error"].map((item) => <button type="button" key={item} aria-pressed={mode === item} onClick={() => setMode(item)}>{item.replaceAll("_", " ")}</button>)}</div></div></aside>;
+}
+
+function DeletedSessionState({ onRestore }) {
+  return <section className="route-state receipt" aria-live="polite" tabIndex="-1"><span className="state-icon success"><Check size={24} weight="bold" aria-hidden="true" /></span><p className="eyebrow supported-text">Deletion receipt</p><h1>Demo session cleared.</h1><p>The Company, Sources, History, Review Desk, and Reports fixture views are cleared for this browser session. No server data existed.</p><button autoFocus className="button primary" type="button" onClick={onRestore}>Restore verified fixture</button></section>;
+}
+
+function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [source, setSource] = useState(null);
+  const [sessionCleared, setSessionCleared] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || false);
+  const [compactSources, setCompactSources] = useState(false);
+  const assistantButtonRef = useRef(null);
+  const assistantReturnRef = useRef(null);
+  const sourceReturnRef = useRef(null);
+  const mobileMenuButtonRef = useRef(null);
+  const mobilePanelRef = useRef(null);
+  useDismissible(mobileOpen, () => setMobileOpen(false), mobileMenuButtonRef, mobilePanelRef);
+  const data = adaptProductContract(productData);
+  const openSource = (item, trigger) => { sourceReturnRef.current = trigger || document.activeElement; setSource(item); };
+  const openAssistant = (trigger) => { assistantReturnRef.current = trigger || document.activeElement; setMobileOpen(false); setAssistantOpen(true); };
+  const restoreFixture = () => { setSessionCleared(false); onNavigate("/company"); };
+  const pages = {
+    "/": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} reducedMotion={reducedMotion} />,
+    "/company": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} reducedMotion={reducedMotion} />,
+    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => setSessionCleared(false)} reducedMotion={reducedMotion} />,
+    "/history": <HistoryPage data={data} onNavigate={onNavigate} />,
+    "/review": <ReviewDesk onClearSession={() => setSessionCleared(true)} productData={data} />,
+    "/reports": <ReportsPage data={data} onNavigate={onNavigate} />,
+    "/profile": <ProfilePage />,
+    "/settings": <SettingsPage reducedMotion={reducedMotion} compactSources={compactSources} onReducedMotion={setReducedMotion} onCompactSources={setCompactSources} initialProviderMode={initialProviderMode} />,
+    "/sign-in": <SignInPage />,
+    "/privacy": <PrivacyPage />,
+    "/legal": <LegalPage />,
+  };
+  const protectedRoutes = new Set(["/", "/company", "/files", "/history", "/review", "/reports"]);
+  const content = sessionCleared && protectedRoutes.has(route) ? <DeletedSessionState onRestore={restoreFixture} /> : pages[route] || <NotFoundPage onNavigate={onNavigate} />;
+  const sourceOpen = Boolean(source);
+  const navigateFromCitation = (destination) => { setAssistantOpen(false); onNavigate(destination); };
+  return <div className={`product-shell ${assistantOpen ? "assistant-is-open" : ""} ${reducedMotion ? "reduced-motion" : ""} ${compactSources ? "compact-sources" : ""}`}><a className="skip-link" href="#main-content">Skip to content</a><MobileHeader backgroundInert={mobileOpen || assistantOpen || sourceOpen} menuButtonRef={mobileMenuButtonRef} onOpenNav={() => setMobileOpen(true)} onOpenAssistant={openAssistant} /><Sidebar backgroundInert={assistantOpen || sourceOpen} panelRef={mobilePanelRef} route={route} onNavigate={onNavigate} onOpenAssistant={openAssistant} assistantButtonRef={assistantButtonRef} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />{mobileOpen && <button className="nav-scrim" type="button" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}<main id="main-content" className="workspace" tabIndex="-1" aria-label={routeTitle(route)} inert={mobileOpen || assistantOpen || sourceOpen} aria-hidden={mobileOpen || assistantOpen || sourceOpen ? "true" : undefined}><div className="route-transition" key={route}>{content}</div></main><AssistantPanel data={data} open={assistantOpen} onClose={() => { if (!source) setAssistantOpen(false); }} onOpenCitation={openSource} returnRef={assistantReturnRef} initialMode={assistantMode} sourceOpen={sourceOpen} /><CitationDrawer source={source} onClose={() => setSource(null)} onNavigate={navigateFromCitation} returnRef={sourceReturnRef} /></div>;
+}
+
+export function App({ initialRoute, initialAssistantOpen = false, initialAssistantMode = "verified_demo", initialProviderMode = "not_configured", initialProductData = productFixture }) {
+  const [route, navigate] = useRoute(initialRoute);
+  const [assistantOpen, setAssistantOpen] = useState(initialAssistantOpen);
+  useEffect(() => {
+    document.title = `${routeTitle(route)} · MagicFin`;
+    const hash = window.location.hash.slice(1);
+    if (!hash) return undefined;
+    const timer = window.setTimeout(() => {
+      const target = document.getElementById(hash);
+      target?.focus({ preventScroll: false });
+      target?.scrollIntoView({ block: "start" });
+    }, 0);
     return () => window.clearTimeout(timer);
-  }, [screen, processingDelay]);
-  function handleFiles(files) {
-    const extensions = files.map((file) => file.name.split(".").pop()?.toLowerCase());
-    setScreen(files.length === 2 && extensions.includes("pdf") && extensions.includes("xlsx") ? "loading" : "error");
-  }
-  if (screen === "empty") return <EmptyState onFilesSelected={handleFiles} />;
-  if (screen === "loading") return <LoadingState />;
-  if (screen === "error") return <ErrorState onRetry={() => setScreen("empty")} />;
-  if (screen === "receipt") return <Receipt onStart={() => setScreen("empty")} />;
-  const closeDelete = () => { setDeleteOpen(false); window.setTimeout(() => deleteButtonRef.current?.focus(), 0); };
-  return <><ReviewDesk cached={screen === "cached"} deleteButtonRef={deleteButtonRef} onDelete={() => setDeleteOpen(true)} onNewReview={() => setScreen("empty")} />{deleteOpen && <DeleteDialog onCancel={closeDelete} onConfirm={() => { setDeleteOpen(false); setScreen("receipt"); }} />}</>;
+  }, [route]);
+  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} />;
 }

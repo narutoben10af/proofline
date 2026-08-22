@@ -1,35 +1,42 @@
-# Proofline Editorial Ledger design QA
+# MagicFin product-shell design QA
 
-**Source visual truth:** `docs/screenshots/editorial-ledger-reference.jpg`
-**Implementation screenshot:** `docs/screenshots/review-desk-desktop.jpg`
-**Combined comparison:** `docs/screenshots/design-comparison.jpg`
-**Viewport:** 1440 × 1024 CSS px, device scale factor 1
-**Responsive evidence:** `docs/screenshots/review-desk-320.jpg`, 320 × 1000 CSS px viewport
-**State:** ready review, PDF evidence open, spreadsheet evidence closed
+## Source visual truth
 
-## Full-view comparison evidence
+- User hand-drawn information architecture: persistent product navigation, company/period header, compact files, one dominant trend, summary/review priorities, report access, and assistant utility.
+- User chat/chart/sources reference: interaction anatomy only—dismissible conversation, analytical canvas, and on-demand citation evidence. Its dark palette, branding, trading language, and proprietary details were not copied.
+- Approved Editorial Ledger reference: `docs/screenshots/editorial-ledger-reference.jpg` supplies the warm palette, strong typography, fine rules, and evidence-first hierarchy.
+- Superdesign draft `64b3b7fd-d4e4-4222-9fde-bb3f9d7e6578` was used as an additional implementation check, not as a replacement for the user references.
 
-The approved reference and browser implementation were displayed together in one comparison frame. The implementation preserves the reference hierarchy and proportions: grouped three-state strip, one dominant discrepancy comparison, four numbered proof steps, and a narrower evidence rail. The implementation intentionally simplifies the reference by keeping spreadsheet evidence closed initially and removing nonessential analyst metadata, matching the hackathon scope.
+## Fidelity decisions
 
-## Required fidelity surfaces
+- The compact left rail follows the sketch but removes overlapping dashboard destinations. Company has one visual center: a source-linked revenue trend with an accessible table.
+- Four source cards expose filename/type, period or date, provenance, validation status, anchor, and review action. They are subordinate to the trend rather than equal-weight dashboard tiles.
+- The factual summary, review priorities, evidence flag, export state, and cited assistant stay secondary to evidence review. “Recommendation,” investment rating, forecasts, and causal language are absent.
+- The assistant opens as a dismissible panel; citations open a nested drawer and deep-link to focusable Review Desk evidence. `Calculated result` and `Assistant analysis` remain visibly distinct.
+- MagicFin’s brief “magic” language appears in the five deterministic Run Magic stages. Motion clarifies state changes and is disabled by the system preference or the session Settings control.
 
-- **Fonts and typography:** Source Serif 4/Georgia display treatment and Inter/system UI treatment preserve the editorial contrast, metric scale, line length, and tabular figures. No actionable wrapping or truncation issues were visible.
-- **Spacing and layout rhythm:** Desktop 1.95/.95 editorial grid, fine rules, broad whitespace, and near-square controls align with the reference. The 320px layout collapses to one column with `scrollWidth === clientWidth === 320`; no fixed-height or overflow-hidden shell is used.
-- **Colors and tokens:** Warm paper, ink, vermilion contradiction, moss support, and darkened ochre uncertainty match the source direction. Every verdict includes text and an icon; color is not the sole state cue. Boundaries use grouped surfaces and/or 2px semantic accents rather than a faint rule alone.
-- **Image and asset quality:** The design is typography/data-led and contains no photographic or illustrative assets. UI icons come from Phosphor; no handcrafted SVG, emoji, or placeholder imagery is used.
-- **Copy and content:** Claim, cited values, formula, result, tolerance, source labels, fixture boundary, review limitation, cached fallback, and deletion scope are explicit. The PDF excerpt is a semantic quotation and the spreadsheet is a captioned table.
+## Browser and responsive checks
 
-## Focused interaction evidence
+The implementation was compared at desktop and 320px widths against both user references and the Editorial Ledger reference. The desktop canvas preserves the sketch’s hierarchy without becoming a cramped three-column terminal. On mobile, navigation becomes an accessible off-canvas panel and the assistant occupies the available viewport.
 
-Browser checks confirmed spreadsheet disclosure changes `aria-expanded` to `true`; deletion opens a labeled modal; Escape closes it and restores focus to the Delete session trigger; no console errors were recorded. Automated interaction tests cover disclosure, live review feedback, Escape/focus restoration, deletion receipt, malformed input, cached fallback, and JSON export.
+Checks include:
 
-## Comparison history
+- no horizontal overflow at 320px;
+- primary actions remain visible in single-column layouts and at 400% zoom equivalent;
+- the assistant composer remains in normal sticky flow rather than covering conversation evidence;
+- mobile navigation and nested drawers support Escape, focus trapping/restoration, and background `inert` isolation;
+- source anchors receive focus after citation navigation and workbook evidence opens when directly linked;
+- no external font request, console error, fixed-height workspace shell, or hidden primary action.
 
-- Initial accessibility review identified missing skip navigation, insufficient ochre contrast, incomplete live/focus behavior, and no cached state. Fixes added the skip link, `#815000` uncertainty color, live regions, modal initial focus/Escape/focus restoration, and a labeled cached fallback. Post-fix browser evidence shows the intended hierarchy at 1440px and a no-overflow 320px layout.
-- No remaining P0, P1, or P2 visual or interaction mismatch was found in the final combined comparison. The implementation is slightly less dense than the generated reference by design; this is an acceptable hackathon simplification.
+## Trust and error review
 
-## Follow-up polish
+- File handling accepts only the exact verified demo pair and states that bytes are not read, uploaded, or retained.
+- History is labeled static fixture activity and never implies persistence.
+- JSON works; PDF remains adapter-backed and truthfully unavailable unless a server endpoint returns ready.
+- Assistant provider-not-configured, offline, loading, error/retry, and verified demo states are explicit. There is no Gemini/Gemma label or browser key.
+- Profile/sign-in/storage/privacy copy describes only implemented local behavior. Deletion produces a narrow session receipt and does not claim server deletion.
+- Every verdict includes text/icons; the dark ochre warning token passes normal-text contrast; rules are not the sole semantic boundary.
 
-- P3: Replace the fictional demo adapter with final typed backend source-span contracts when available.
+The automated suite covers 18 critical route, state, export, focus, reduced-motion, fixture, deletion, and brand interactions. Production and Sites builds are verified separately.
 
 **final result: passed**
