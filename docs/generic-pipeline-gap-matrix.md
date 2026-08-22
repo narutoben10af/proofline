@@ -1,6 +1,6 @@
 # Generic issuer pipeline gap matrix
 
-Audit base: `88c8f29fbeac2b8f699ffaa82441182098f2ad87` (`origin/main` on 2026-08-22).
+Audit base: `adc2159c9590fe7dca190ce433e2a162d7259525` (`origin/main` on 2026-08-22).
 
 Additional read-only inputs:
 
