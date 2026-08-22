@@ -129,14 +129,106 @@ export const runMagicStages = [
   "Flag discrepancies",
 ];
 
+const metricPresentation = {
+  revenue_growth_yoy: { id: "revenue", label: "Revenue growth", unit: "Percent", suffix: "%" },
+  operating_margin: { id: "operating-margin", label: "Operating margin", unit: "Percent of revenue", suffix: "%" },
+  current_ratio: { id: "current-ratio", label: "Current ratio", unit: "Ratio", suffix: "×" },
+  fcf_margin: { id: "fcf-margin", label: "Free-cash-flow margin", unit: "Project-defined percent", suffix: "%" },
+};
+
+function sourceAnchor(source) {
+  if (!source) return "Source span unavailable";
+  return source.kind === "pdf" ? `Page ${source.page}` : `${source.sheet} ${source.cell}`;
+}
+
+function displayMetric(result) {
+  const presentation = metricPresentation[result.metric_id] || { id: result.metric_id, label: result.metric_id, unit: "Reported unit", suffix: "" };
+  const number = Number(result.result);
+  return {
+    ...presentation,
+    value: result.result == null ? "Unavailable" : `${Number.isFinite(number) ? number.toLocaleString(undefined, { maximumFractionDigits: 2 }) : result.result}${presentation.suffix}`,
+    delta: result.exceptional_state ? "Needs attention" : "Calculated",
+    deltaLabel: result.exceptional_state || "deterministic backend",
+    tone: result.exceptional_state ? "caution" : "positive",
+  };
+}
+
+export function adaptAnalysisResponse(response) {
+  const documents = Array.isArray(response?.documents) ? response.documents : [];
+  const spans = Array.isArray(response?.source_spans) ? response.source_spans : [];
+  const observations = Array.isArray(response?.observations) ? response.observations : [];
+  const results = Array.isArray(response?.metric_results) ? response.metric_results : [];
+  const findings = Array.isArray(response?.findings) ? response.findings : [];
+  const claims = Array.isArray(response?.claims) ? response.claims : [];
+  if (!documents.length || !results.length || !findings.length) throw new Error("The analysis response is incomplete.");
+  const issuer = documents[0].issuer;
+  const latestEnd = observations.map((item) => item.period?.end).filter(Boolean).sort().at(-1) || "Current period";
+  const spanById = new Map(spans.map((item) => [item.id, item]));
+  const observationById = new Map(observations.map((item) => [item.id, item]));
+  const resultById = new Map(results.map((item) => [item.id, item]));
+  const claimById = new Map(claims.map((item) => [item.id, item]));
+  const sources = documents.map((document) => {
+    const span = spans.find((item) => item.document_version_id === document.id);
+    const kind = span?.source?.kind === "pdf" ? "PDF" : "Workbook";
+    return { id: document.id, name: document.version_label, kind, date: latestEnd, status: "Validated", provenance: document.source_url, anchor: sourceAnchor(span?.source), route: `/files#${document.id}` };
+  });
+  const metrics = results.slice(0, 4).map((result) => {
+    const input = observationById.get(result.input_observation_ids?.[0]);
+    const span = spanById.get(input?.source_span_id);
+    return { ...displayMetric(result), period: input?.period?.end || latestEnd, source: `${sources.find((item) => item.id === span?.document_version_id)?.name || "Validated source"} · ${sourceAnchor(span?.source)}` };
+  });
+  const revenueObservations = observations.filter((item) => /revenue/i.test(item.concept)).sort((a, b) => String(a.period?.end).localeCompare(String(b.period?.end)));
+  const fallbackMetric = (id) => Number(results.find((item) => item.metric_id === id)?.result) || 0;
+  const trend = revenueObservations.map((item) => ({ period: item.period?.end || "Reported period", revenue: Number(item.numeric_value), operatingMargin: fallbackMetric("operating_margin") * (Math.abs(fallbackMetric("operating_margin")) <= 1 ? 100 : 1), currentRatio: fallbackMetric("current_ratio"), fcfMargin: fallbackMetric("fcf_margin") * (Math.abs(fallbackMetric("fcf_margin")) <= 1 ? 100 : 1) }));
+  const finding = findings[0];
+  const claim = claimById.get(finding.claim_id) || claims[0];
+  const result = resultById.get(finding.metric_result_id) || results[0];
+  const inputs = (result.input_observation_ids || []).map((id) => observationById.get(id)).filter(Boolean);
+  const paddedInputs = inputs.length >= 2 ? inputs.slice(0, 2) : [inputs[0], inputs[0]].filter(Boolean);
+  const reviewInputs = paddedInputs.map((item) => ({ period: item.period?.end || latestEnd, value: item.display_value, cell: sourceAnchor(spanById.get(item.source_span_id)?.source) }));
+  const classification = finding.classification || "uncertain";
+  const review = {
+    meta: { entity: issuer, period: latestEnd, registryVersion: response.metric_registry_version },
+    summary: { supported: findings.filter((item) => item.classification === "supported").length, uncertain: findings.filter((item) => item.classification === "uncertain").length, contradicted: findings.filter((item) => item.classification === "contradicted").length },
+    claim: { text: claim?.text || "No narrative claim supplied", value: claim?.asserted_value == null ? "Direction-only claim" : String(claim.asserted_value), source: sourceAnchor(spanById.get(claim?.source_span_id)?.source) },
+    result: { status: classification, value: result?.result == null ? "Unavailable" : String(result.result), difference: classification === "supported" ? "Within tolerance" : "Outside tolerance", rationale: finding.rationale, tolerance: finding.tolerance == null ? "Policy-defined" : String(finding.tolerance) },
+    inputs: reviewInputs.length === 2 ? reviewInputs : [{ period: latestEnd, value: "Unavailable", cell: "Unavailable" }, { period: latestEnd, value: "Unavailable", cell: "Unavailable" }],
+    formula: result?.formula_id || "Allowlisted deterministic formula",
+  };
+  const citations = finding.evidence_source_span_ids.map((id) => {
+    const span = spanById.get(id);
+    const source = sources.find((item) => item.id === span?.document_version_id);
+    return { id, label: source?.name || id, detail: finding.rationale, anchor: sourceAnchor(span?.source), period: latestEnd, provenance: source?.provenance, route: source?.route || "/files#sources" };
+  });
+  return {
+    session: { id: `analysis:${findings[0].id}`, mode: "live", label: "Validated analysis", persistence: "Temporary analysis response", entity: issuer, period: latestEnd, lastUpdated: "Current session" },
+    company: { name: issuer, shortName: issuer.split(/\s+/)[0], description: documents[0].reporting_basis, currency: `${observations.find((item) => item.currency)?.currency || "Reported"} units` },
+    sources,
+    trend: trend.length >= 2 ? trend : [{ period: "Prior", revenue: 0, operatingMargin: 0, currentRatio: 0, fcfMargin: 0 }, { period: latestEnd, revenue: trend[0]?.revenue || 0, operatingMargin: trend[0]?.operatingMargin || 0, currentRatio: trend[0]?.currentRatio || 0, fcfMargin: trend[0]?.fcfMargin || 0 }],
+    metrics,
+    secondaryRatios: [], economicContext: [],
+    forecast: { minimumHistory: 99, method: "Unavailable for uploaded analysis", inputs: "Reported observations only", assumptions: "No unsupported outlook generated", ranges: [] },
+    summary: finding.rationale,
+    reviewPriorities: findings.map((item) => ({ id: item.id, label: item.suggested_investigation || item.rationale, status: item.classification })),
+    analysisSignals: findings.map((item) => ({ label: item.classification, value: item.id, detail: item.rationale })),
+    managementQuestions: findings.map((item) => item.suggested_investigation).filter(Boolean),
+    history: [{ id: findings[0].id, label: `${latestEnd} analysis`, time: "Current session", status: classification, route: "/review" }],
+    assistant: { ...productFixture.assistant, mode: "validated_analysis", analysis: finding.rationale, citations, suggestions: [{ id: "finding", label: "What did the deterministic analysis find?", calculated: result?.result == null ? "Unavailable" : String(result.result), formula: result?.formula_id, analysis: finding.rationale }], chartProposals: [], chartSpecs: response.chart_specs || [] },
+    review,
+    analysisResponse: response,
+    reportBundle: response.report_bundle,
+  };
+}
+
 export function adaptProductContract(response = productFixture) {
+  if (response?.output_status === "calculated" && Array.isArray(response.documents)) return adaptAnalysisResponse(response);
   return response;
 }
 
 export function getAssistantAdapter(mode = "verified_demo", response = productFixture) {
   const base = response.assistant;
   const states = {
-    verified_demo: { ...base, mode, notice: "Verified scripted demo · provider not configured" },
+    verified_demo: { ...base, mode, notice: response.session?.mode === "live" ? "Validated analysis response" : "Verified scripted demo · provider not configured" },
     not_configured: { mode, notice: "Assistant provider not configured", analysis: "Free-form questions are unavailable until a server-side provider is configured.", citations: [] },
     offline: { mode, notice: "Offline", analysis: "The scripted demo is unavailable while this session is offline.", citations: [] },
     error: { mode, notice: "Assistant unavailable", analysis: "The fixture response could not be loaded. Retry the verified demo.", citations: [] },
@@ -170,6 +262,26 @@ export function getAssistantChartSpec(response = productFixture, proposal = resp
 }
 
 export function getAssistantChartSpecs(response = productFixture) {
+  const backendSpecs = response.assistant?.chartSpecs || response.chartSpecs;
+  if (Array.isArray(backendSpecs) && backendSpecs.length) {
+    return backendSpecs.filter((spec) => spec?.authoritative_values === "deterministic_backend" && ["line", "bar", "comparison"].includes(spec.chart_type)).map((spec, index) => {
+      const firstSeries = spec.series?.[0];
+      const citations = spec.citations || [];
+      const sources = citations.map((citation) => response.sources.find((source) => source.id === citation.evidence_id || source.sourceSpanId === citation.source_span_id) || { id: citation.evidence_id, name: citation.label, anchor: citation.source_span_id, provenance: "Validated backend citation", route: `/files#${citation.evidence_id}` });
+      return {
+        id: `backend-chart-${index + 1}`,
+        type: spec.chart_type,
+        title: spec.title,
+        metricKey: "backend",
+        label: firstSeries?.label || spec.title,
+        unit: firstSeries?.unit || "Reported unit",
+        currency: firstSeries?.currency || response.company.currency,
+        series: (firstSeries?.points || []).map((point) => ({ period: point.period_end, value: Number(point.value), sourceSpanIds: point.source_span_ids })),
+        sources,
+        authoritativeValues: spec.authoritative_values,
+      };
+    }).filter((spec) => spec.series.length && spec.sources.length);
+  }
   const proposals = Array.isArray(response.assistant?.chartProposals) && response.assistant.chartProposals.length
     ? response.assistant.chartProposals
     : [response.assistant?.chartProposal].filter(Boolean);
