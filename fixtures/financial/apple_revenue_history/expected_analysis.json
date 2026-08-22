@@ -1,0 +1,64 @@
+{
+  "schema_version": "proofline.financial.history.analysis.v1",
+  "series_id": "apple_total_net_sales_fy2014_fy2025",
+  "currency": "USD",
+  "unit": "million",
+  "formulas": {
+    "year_over_year_change_ratio": "revenue_t / revenue_t_minus_1 - 1",
+    "cumulative_change_ratio": "revenue_last / revenue_first - 1",
+    "largest_absolute_year_over_year_change": "argmax(abs(year_over_year_change_ratio))"
+  },
+  "year_over_year": [
+    {"fiscal_year": "FY2015", "expected_ratio": "0.278563418036598375", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2016", "expected_ratio": "-0.077342061913013713", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2017", "expected_ratio": "0.063045181993980681", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2018", "expected_ratio": "0.158619576502613050", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2019", "expected_ratio": "-0.020410775805267418", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2020", "expected_ratio": "0.055120803769784836", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2021", "expected_ratio": "0.332593847330746954", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2022", "expected_ratio": "0.077937876041846060", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2023", "expected_ratio": "-0.028004605303199367", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2024", "expected_ratio": "0.020219940775141213", "record_kind": "derived_historical"},
+    {"fiscal_year": "FY2025", "expected_ratio": "0.064255117828327388", "record_kind": "derived_historical"}
+  ],
+  "trend": {
+    "first_fiscal_year": "FY2014",
+    "last_fiscal_year": "FY2025",
+    "first_value": "182795",
+    "last_value": "416161",
+    "expected_cumulative_change_ratio": "1.276654175442435515",
+    "positive_year_over_year_periods": 8,
+    "negative_year_over_year_periods": 3,
+    "zero_year_over_year_periods": 0,
+    "interpretation": "The reported annual series ends above its starting value but is not monotonic. This is descriptive, not causal or advisory."
+  },
+  "patterns": [
+    {
+      "pattern_id": "reported_decline_years",
+      "kind": "deterministic_pattern",
+      "fiscal_years": ["FY2016", "FY2019", "FY2023"],
+      "rule": "year_over_year_change_ratio < 0"
+    },
+    {
+      "pattern_id": "nonstandard_duration_years",
+      "kind": "comparability_exception",
+      "fiscal_years": ["FY2017", "FY2023"],
+      "rule": "duration_weeks != 52",
+      "note": "Each period spans 53 weeks; annual growth around these boundaries is not normalized for the extra week."
+    }
+  ],
+  "exception": {
+    "exception_id": "largest_absolute_yoy_change",
+    "kind": "deterministic_exception",
+    "fiscal_year": "FY2021",
+    "expected_ratio": "0.332593847330746954",
+    "comparison_set": "FY2015 through FY2025 year-over-year changes",
+    "interpretation": "Largest absolute change in this finite series. No cause is inferred."
+  },
+  "comparability": {
+    "gap_status": "no_missing_annual_periods",
+    "scope_limits": "Consolidated total net sales only; no quarterly, segment, product, geographic, FX-normalized, or per-week series is supplied.",
+    "accounting_policy": "Apple adopted Topic 606 in FY2019 using the full retrospective method and says prior total net sales were not restated because the impact was not material. Products and Services classifications for FY2018 and FY2017 were reclassified, but this fixture uses only consolidated total net sales.",
+    "reclassification_policy": "Each three-year block uses the latest audited comparative statement in its cited filing. Filing disclosures about reclassifications are retained; values are not silently adjusted across blocks."
+  }
+}

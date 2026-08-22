@@ -1,0 +1,61 @@
+{
+  "schema_version": "proofline.financial.forecast-test.v1",
+  "contract_only": true,
+  "implementation_boundary": "This fixture specifies deterministic forecast behavior without changing shared backend or frontend code.",
+  "method": {
+    "method_id": "trailing_five_yoy_median_v1",
+    "input_series_id": "apple_total_net_sales_fy2014_fy2025",
+    "minimum_history_periods": 8,
+    "training_actual_periods": 6,
+    "growth_observations": 5,
+    "requirements": [
+      "annual fiscal periods are consecutive",
+      "all values have record_kind historical_actual",
+      "issuer, concept, entity scope, currency, and unit are identical",
+      "all revenue values used as denominators are positive"
+    ],
+    "point_formula": "latest_actual * (1 + median(last_five_year_over_year_change_ratios))",
+    "scenario_range_formula": "latest_actual * (1 + min(last_five_year_over_year_change_ratios)) through latest_actual * (1 + max(last_five_year_over_year_change_ratios))",
+    "rounding": "Forecast display values are rounded to 0.001 USD million using decimal round-half-even.",
+    "uncertainty": "The low/high outputs are a deterministic historical-growth scenario range, not a confidence interval or prediction interval.",
+    "limitations": "The method ignores drivers, structural breaks, inflation, foreign exchange, period-length normalization, and causal information. It is a reproducible demo baseline, not advice."
+  },
+  "cases": [
+    {
+      "case_id": "apple_12_period_history_passes_gate",
+      "input_fiscal_years": ["FY2014", "FY2015", "FY2016", "FY2017", "FY2018", "FY2019", "FY2020", "FY2021", "FY2022", "FY2023", "FY2024", "FY2025"],
+      "expected_status": "forecast_available",
+      "training_fiscal_years": ["FY2020", "FY2021", "FY2022", "FY2023", "FY2024", "FY2025"],
+      "growth_fiscal_years": ["FY2021", "FY2022", "FY2023", "FY2024", "FY2025"],
+      "expected_growth_ratios": [
+        "0.332593847330746954",
+        "0.077937876041846060",
+        "-0.028004605303199367",
+        "0.020219940775141213",
+        "0.064255117828327388"
+      ],
+      "expected_median_growth_ratio": "0.064255117828327388",
+      "expected_min_growth_ratio": "-0.028004605303199367",
+      "expected_max_growth_ratio": "0.332593847330746954",
+      "output": {
+        "fiscal_year": "FY2026",
+        "record_kind": "forecast",
+        "currency": "USD",
+        "unit": "million",
+        "point_value": "442901.474",
+        "scenario_low_value": "404506.575",
+        "scenario_high_value": "554573.588",
+        "historical_cutoff_fiscal_year": "FY2025"
+      }
+    },
+    {
+      "case_id": "seven_period_history_fails_gate",
+      "input_fiscal_years": ["FY2019", "FY2020", "FY2021", "FY2022", "FY2023", "FY2024", "FY2025"],
+      "expected_status": "insufficient_history",
+      "expected_error_code": "MINIMUM_HISTORY_NOT_MET",
+      "expected_observed_periods": 7,
+      "expected_required_periods": 8,
+      "output": null
+    }
+  ]
+}
