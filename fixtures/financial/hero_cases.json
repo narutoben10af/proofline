@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0.0",
+  "cases": [
+    {
+      "case_id": "pcg_operating_margin_swing",
+      "kind": "genuine_exception",
+      "classification": "uncertain",
+      "headline": "PCG moved from operating profit to operating loss as revenue contracted",
+      "claim": "PCG's FY2025 operating performance is an exception worth investigation.",
+      "input_fact_ids": [
+        "pcg_revenue_2025",
+        "pcg_revenue_2024",
+        "pcg_operating_loss_2025",
+        "pcg_operating_profit_2024"
+      ],
+      "calculations": {
+        "revenue_growth": "-0.104039646571680088",
+        "operating_margin_2025": "-0.049927219796215430",
+        "operating_margin_2024": "0.067066610152913176",
+        "operating_margin_change": "-0.1169938299491286047153864768586667813268"
+      },
+      "rationale": "The reported figures establish the size and direction of the swing, but Proofline does not infer a cause. The case is uncertain as to cause and prompts human investigation; the underlying arithmetic is source-supported.",
+      "suggested_investigation": "Review PCG's operating-expense, impairment, foreign-exchange, segment, and joint-operation disclosures before attributing the margin swing.",
+      "source_ids": ["PCG-FR-2025"],
+      "fixture_anchor": "hero_cases.json#/cases/0"
+    },
+    {
+      "case_id": "pcg_revenue_rounding_check",
+      "kind": "narrative_number_comparison",
+      "classification": "supported",
+      "claim": "Revenue for FY2025 stood at RM27.5 billion.",
+      "claim_source_id": "PCG-FY2025-RELEASE",
+      "input_fact_ids": ["pcg_revenue_2025"],
+      "normalized_claim_value_rm_million": "27500",
+      "reported_value_rm_million": "27480",
+      "absolute_difference_rm_million": "20",
+      "tolerance": "RM50 million, the half-unit rounding interval for one-decimal RM billions",
+      "rationale": "RM27,480 million rounds to RM27.5 billion at the claim's display precision, so the release and audited statement agree.",
+      "fixture_anchor": "hero_cases.json#/cases/1"
+    }
+  ]
+}

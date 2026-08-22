@@ -1,0 +1,121 @@
+{
+  "schema_version": "1.0.0",
+  "metric_registry_version": "proofline.financial.v1",
+  "value_convention": "Ratios are decimal strings; multiply by 100 for percent display.",
+  "outputs": [
+    {
+      "issuer": "Apple Inc.",
+      "period": "FY2025",
+      "metric_id": "revenue_growth_yoy",
+      "formula": "revenue_t / revenue_t_minus_1 - 1",
+      "input_fact_ids": ["apple_revenue_2025", "apple_revenue_2024"],
+      "expected_value": "0.064255117828327387574002327157415576611",
+      "display_value": "6.425512%",
+      "evidence_label": "derived_calculation",
+      "fixture_anchor": "expected_metrics.json#/outputs/0"
+    },
+    {
+      "issuer": "Apple Inc.",
+      "period": "FY2025",
+      "metric_id": "operating_margin",
+      "formula": "operating_profit_or_loss / revenue",
+      "input_fact_ids": ["apple_operating_income_2025", "apple_revenue_2025"],
+      "expected_value": "0.3197079976259188150739737745728215762650",
+      "display_value": "31.970800%",
+      "evidence_label": "derived_calculation",
+      "fixture_anchor": "expected_metrics.json#/outputs/1"
+    },
+    {
+      "issuer": "Apple Inc.",
+      "period": "FY2025",
+      "metric_id": "current_ratio",
+      "formula": "current_assets / current_liabilities",
+      "input_fact_ids": ["apple_current_assets_2025", "apple_current_liabilities_2025"],
+      "expected_value": "0.8932929222186667954670321377036907342225",
+      "display_value": "0.893293x",
+      "evidence_label": "derived_calculation",
+      "fixture_anchor": "expected_metrics.json#/outputs/2"
+    },
+    {
+      "issuer": "Apple Inc.",
+      "period": "FY2025",
+      "metric_id": "fcf_margin",
+      "formula": "(net_cash_from_operating_activities - cash_purchases_of_ppe) / revenue",
+      "input_fact_ids": ["apple_cfo_2025", "apple_capex_2025", "apple_revenue_2025"],
+      "expected_value": "0.2373288222586931500068483111103635371887",
+      "display_value": "23.732882%",
+      "evidence_label": "derived_calculation",
+      "non_gaap": true,
+      "fixture_anchor": "expected_metrics.json#/outputs/3"
+    },
+    {
+      "issuer": "Apple Inc.",
+      "period": "FY2025",
+      "metric_id": "gross_margin",
+      "formula": "gross_profit / revenue",
+      "input_fact_ids": ["apple_gross_profit_2025", "apple_revenue_2025"],
+      "expected_value": "0.4690516410716044992202536998901867306163",
+      "display_value": "46.905164%",
+      "evidence_label": "derived_calculation",
+      "tier": 1,
+      "fixture_anchor": "expected_metrics.json#/outputs/4"
+    },
+    {
+      "issuer": "PETRONAS Chemicals Group Berhad",
+      "period": "FY2025",
+      "metric_id": "revenue_growth_yoy",
+      "formula": "revenue_t / revenue_t_minus_1 - 1",
+      "input_fact_ids": ["pcg_revenue_2025", "pcg_revenue_2024"],
+      "expected_value": "-0.104039646571680088",
+      "display_value": "-10.403965%",
+      "evidence_label": "derived_calculation",
+      "fixture_anchor": "expected_metrics.json#/outputs/5"
+    },
+    {
+      "issuer": "PETRONAS Chemicals Group Berhad",
+      "period": "FY2025",
+      "metric_id": "operating_margin",
+      "formula": "operating_profit_or_loss / revenue",
+      "input_fact_ids": ["pcg_operating_loss_2025", "pcg_revenue_2025"],
+      "expected_value": "-0.049927219796215430",
+      "display_value": "-4.992722%",
+      "evidence_label": "derived_calculation",
+      "fixture_anchor": "expected_metrics.json#/outputs/6"
+    },
+    {
+      "issuer": "PETRONAS Chemicals Group Berhad",
+      "period": "FY2025",
+      "metric_id": "current_ratio",
+      "formula": "current_assets / current_liabilities",
+      "input_fact_ids": ["pcg_current_assets_2025", "pcg_current_liabilities_2025"],
+      "expected_value": "1.439522150323544052",
+      "display_value": "1.439522x",
+      "evidence_label": "derived_calculation",
+      "fixture_anchor": "expected_metrics.json#/outputs/7"
+    },
+    {
+      "issuer": "PETRONAS Chemicals Group Berhad",
+      "period": "FY2025",
+      "metric_id": "fcf_margin",
+      "formula": "(net_cash_from_operating_activities - cash_purchases_of_ppe) / revenue",
+      "input_fact_ids": ["pcg_cfo_2025", "pcg_capex_2025", "pcg_revenue_2025"],
+      "expected_value": "0.038755458515283843",
+      "display_value": "3.875546%",
+      "evidence_label": "derived_calculation",
+      "non_gaap": true,
+      "fixture_anchor": "expected_metrics.json#/outputs/8"
+    },
+    {
+      "issuer": "PETRONAS Chemicals Group Berhad",
+      "period": "FY2025",
+      "metric_id": "gross_margin",
+      "formula": "gross_profit / revenue",
+      "input_fact_ids": ["pcg_gross_profit_2025", "pcg_revenue_2025"],
+      "expected_value": "0.106550218340611353",
+      "display_value": "10.655022%",
+      "evidence_label": "derived_calculation",
+      "tier": 1,
+      "fixture_anchor": "expected_metrics.json#/outputs/9"
+    }
+  ]
+}
