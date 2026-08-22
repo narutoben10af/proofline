@@ -7,6 +7,7 @@ Architecture decision records (ADRs) capture consequential technical choices and
 - [ADR 0000: Record architecture decisions](0000-record-architecture-decisions.md)
 - [ADR 0001: Preserve evidence provenance and use conservative classifications](0001-evidence-provenance-and-conservative-classification.md)
 - [ADR 0002: Enforce a public-fixture-only processing boundary](0002-public-fixture-security-boundary.md)
+- [ADR 0003: Render reports only from canonical immutable bundles](0003-canonical-report-rendering.md)
 
 ## Adding an ADR
 
