@@ -19,15 +19,17 @@ The product is designed around the DevLeague Lab 1 brief: combine financial PDFs
 
 ## Status
 
-The repository now includes a minimal contract-first FastAPI backend. Versioned JSON contracts,
-four deterministic Tier 0 metrics, conservative classification, and fixture-driven tests are
-implemented. Parsing and live hosted-model transport remain intentionally stubbed; see the
-[API contract notes](docs/api-contracts.md) for the stable frontend boundary and limitations.
+The repository now includes a minimal contract-first FastAPI backend plus the isolated Company
+Lens and deterministic reporting slice. Versioned JSON contracts, four deterministic Tier 0
+metrics, conservative classification, official-source FY2025 economic context fixtures, one
+historical series per reviewed company, and a typed ReportLab PDF renderer are implemented. Parsing
+and live hosted-model transport remain intentionally stubbed; see the [API contract
+notes](docs/api-contracts.md) for the stable frontend boundary and limitations.
 
 The temporary Source Library adds strict PDF/XLSX intake under private process-local capabilities,
 30-minute idle/two-hour absolute cleanup, and scoped deletion receipts. It uses no database and is
 single-process/single-worker only. It is not supported for confidential production input; see
-[ADR 0003](docs/architecture/0003-temporary-process-local-source-library.md).
+[ADR 0004](docs/architecture/0004-temporary-process-local-source-library.md).
 
 ## Intended demo flow
 
@@ -99,6 +101,12 @@ PYTHONPATH=src .venv/bin/python scripts/export_contracts.py
 configured Gemma 4 but intentionally stops before network transport; it is a narrow interface for a
 later reviewed adapter.
 
+The compact fixture-backed lenses are available at `GET /api/v1/company-lenses/apple-fy2025` and
+`GET /api/v1/company-lenses/pcg-fy2025`. `POST /api/v1/reports/pdf` accepts the complete immutable
+`ReportRenderBundle`; it returns an attachment with `ETag`, `X-Content-SHA256`, and `no-store`.
+Use `?output=evidence-json` on the same endpoint for the reviewed canonical JSON fallback. Rendering
+never fetches a source, refreshes economic data, recalculates a metric, or creates a forecast.
+
 ### Current limitations
 
 - Inputs must already be normalized facts with provenance IDs; PDF/workbook adapters are protocols,
@@ -110,6 +118,8 @@ later reviewed adapter.
   privacy/compliance claim. The v1 session endpoints remain metadata-only; the separate temporary
   Source Library accepts narrowly validated PDF/XLSX bytes in one running process and does not run
   processing adapters or send uploaded material to a provider.
+- The deterministic reporting slice does not upload document bytes or run processing adapters.
+  Session deletion cannot remove PDF or JSON exports already downloaded by users.
 - `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
   human-edited dependency declaration.
 

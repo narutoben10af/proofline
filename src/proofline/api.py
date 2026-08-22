@@ -5,9 +5,10 @@ import json
 from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -24,7 +25,15 @@ from proofline.contracts import (
     SourceSessionCreated,
     SourceSessionStatus,
 )
+from proofline.economic_context import get_company_lens
 from proofline.providers import GemmaProvider
+from proofline.report_contracts import CompanyLens, ReportRenderBundle, canonical_sha256
+from proofline.reports import (
+    attachment_filename,
+    content_sha256,
+    render_evidence_json,
+    render_pdf,
+)
 from proofline.service import analyze
 from proofline.sessions import SessionStore
 from proofline.source_library import LibraryError, SessionRecord, SourceLibraryStore, Tombstone
@@ -165,9 +174,11 @@ async def library_error_handler(_request: Request, error: LibraryError) -> JSONR
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_error_handler(
-    _request: Request, _error: RequestValidationError
+    request: Request, error: RequestValidationError
 ) -> JSONResponse:
-    return JSONResponse(status_code=422, content={"reason_code": "REQUEST_INVALID"})
+    if request.url.path.startswith("/api/sessions"):
+        return JSONResponse(status_code=422, content={"reason_code": "REQUEST_INVALID"})
+    return await request_validation_exception_handler(request, error)
 
 
 def source_store(request: Request) -> SourceLibraryStore:
@@ -374,6 +385,59 @@ def create_analysis(request: AnalysisRequest) -> AnalysisResponse:
         return analyze(request)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get(
+    "/api/v1/company-lenses/{company_id}",
+    response_model=CompanyLens,
+    tags=["reporting"],
+)
+def company_lens(company_id: str) -> CompanyLens:
+    lens = get_company_lens(company_id)
+    if lens is None:
+        raise HTTPException(status_code=404, detail="company lens not found")
+    return lens
+
+
+@app.post(
+    "/api/v1/reports/pdf",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                "application/pdf": {},
+                "application/json": {},
+            },
+            "description": "Deterministic PDF report or reviewed JSON evidence export.",
+        }
+    },
+    tags=["reporting"],
+)
+def render_report(
+    bundle: ReportRenderBundle,
+    output: Literal["pdf", "evidence-json"] = "pdf",
+) -> Response:
+    if output == "evidence-json":
+        content = render_evidence_json(bundle)
+        media_type = "application/json"
+        filename = attachment_filename(bundle, "json")
+    else:
+        content = render_pdf(bundle)
+        media_type = "application/pdf"
+        filename = attachment_filename(bundle, "pdf")
+    digest = content_sha256(content)
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "ETag": f'"{digest}"',
+            "X-Content-SHA256": digest,
+            "X-Report-Bundle-SHA256": canonical_sha256(bundle),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.post("/api/v1/sessions", response_model=SessionStatus, status_code=201, tags=["sessions"])

@@ -16,6 +16,7 @@ from proofline.contracts import (
     SourceSessionStatus,
 )
 from proofline.metrics import REGISTRY
+from proofline.report_contracts import CompanyLens, ReportRenderBundle
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -41,6 +42,8 @@ def main() -> None:
         SourceDeletionReceipt.model_json_schema(),
     )
     write_json(target / "extension-contracts.schema.json", ExtensionContracts.model_json_schema())
+    write_json(target / "company-lens.schema.json", CompanyLens.model_json_schema())
+    write_json(target / "report-render-bundle.schema.json", ReportRenderBundle.model_json_schema())
     write_json(
         target / "metric-registry.json",
         {

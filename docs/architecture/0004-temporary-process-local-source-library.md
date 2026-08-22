@@ -1,4 +1,4 @@
-# ADR 0003: Use temporary process-local Source Library storage
+# ADR 0004: Use temporary process-local Source Library storage
 
 - Status: Accepted for prototype
 - Date: 2026-08-22
