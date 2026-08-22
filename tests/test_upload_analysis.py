@@ -104,6 +104,7 @@ def test_uploaded_issuer_analysis_is_dynamic_and_cited_for_2026_input() -> None:
     )
     claims = _pdf(
         "Issuer: Alpine Robotics SE\n"
+        "Financial report. Consolidated statements. Amounts in EUR thousands.\n"
         "Revenue grew 50% for 2026.\n"
         "Operating margin was 20% for 2026.\n"
         "Current ratio was 2 for 2026.\n"
@@ -153,6 +154,7 @@ def test_malaysian_transposed_issuer_and_myr_currency_are_not_fixture_bound() ->
     )
     claims = _pdf(
         "Issuer: Kestrel Logistics Berhad\n"
+        "Financial report. Consolidated group statements. Amounts in MYR millions.\n"
         "Revenue grew 15% for 2026.\n"
         "Operating margin was -12.5% for 2026.\n"
         "Current ratio was 2 for 2026.\n"
