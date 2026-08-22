@@ -20,6 +20,7 @@ import {
   MAX_PROVIDER_RETRIES,
   proposeChart,
   ProviderResponseError,
+  ProviderUnavailableError,
   SUPPORTED_MODELS,
 } from "./provider.ts";
 
@@ -433,6 +434,32 @@ Deno.test("handler requires auth, reports not-configured honestly, and returns c
   assertEquals(payload.data_mode, "live_evidence");
   assertEquals(payload.proposal.source_ids, [SOURCE_A, SOURCE_B]);
   assert(!JSON.stringify(payload).includes('"values"'));
+});
+
+Deno.test("handler does not mislabel provider capacity exhaustion as project rate limiting", async () => {
+  const handler = createHandler({
+    env: { GEMINI_API_KEY: "secret", GEMMA_MODEL: "gemma-4-26b-a4b-it" },
+    authenticate: () => Promise.resolve({ token: TOKEN, userId: USER }),
+    loadEvidence: () => Promise.resolve(evidenceRows()),
+    propose: () =>
+      Promise.reject(
+        new ProviderUnavailableError("provider unavailable", 429, {
+          reason: "quota_rejected",
+          providerStatus: "RESOURCE_EXHAUSTED",
+          quotaId: null,
+          model: "gemma-4-31b-it",
+        }),
+      ),
+  });
+  const response = await handler(
+    new Request("https://function.example/magic-assistant", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify(requestPayload()),
+    }),
+  );
+  assertEquals(response.status, 503);
+  assertEquals((await response.json()).code, "provider_temporarily_unavailable");
 });
 
 Deno.test("handler labels the stable owner-scoped bootstrap context as verified demo", async () => {

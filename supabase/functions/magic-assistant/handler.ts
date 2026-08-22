@@ -212,7 +212,10 @@ export function createHandler(dependencies: HandlerDependencies) {
           quota_id: error.diagnostic?.quotaId ?? null,
           model: error.diagnostic?.model ?? null,
         }));
-        const code = error.statusCode === 429
+        const quotaReason = error.diagnostic?.reason;
+        const code = error.statusCode === 429 &&
+            quotaReason !== "quota_rejected" &&
+            quotaReason !== "temporarily_unavailable"
           ? "provider_rate_limited"
           : "provider_temporarily_unavailable";
         return jsonResponse(
