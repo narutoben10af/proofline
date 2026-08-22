@@ -1,0 +1,74 @@
+{
+  "schema_version": "proofline.financial.bank.sources.v1",
+  "retrieved_at": "2026-08-22",
+  "sources": [
+    {
+      "source_id": "maybank_fy2025_financial_statements",
+      "issuer": "Malayan Banking Berhad",
+      "stock_name": "MAYBANK",
+      "entity_type": "bank",
+      "document_title": "Annual Report 2025 - Financial Statements",
+      "document_type": "Audited annual financial statements",
+      "financial_year_end": "2025-12-31",
+      "announcement_date": "2026-04-01",
+      "bursa_reference_number": "DCS-01042026-00004",
+      "official_announcement_url": "https://maybank.listedcompany.com/news.html/id/2605866",
+      "source_url": "https://maybank.listedcompany.com/newsroom/Maybank_FY2025_Financial_Statements_20260401.pdf",
+      "host_role": "Maybank's issuer-designated investor-relations announcement host carrying the Bursa document submission",
+      "anchors": [
+        {
+          "purpose": "headline summary and issuer-defined ratios",
+          "pdf_page": 5,
+          "printed_page": 3,
+          "table": "Five-Year Group Financial Summary",
+          "rows": ["Operating revenue", "Net operating income", "Loans, advances and financing", "CET1 Capital Ratio", "Loan-to-deposit ratio"],
+          "columns": ["Group FY 31 Dec 2024", "Group FY 31 Dec 2025"]
+        },
+        {
+          "purpose": "audited balance-sheet facts",
+          "pdf_page": 30,
+          "printed_page": 28,
+          "table": "Statements of Financial Position",
+          "rows": ["Total assets", "Loans, advances and financing to customers", "Deposits from customers", "Investment accounts of customers"],
+          "columns": ["Group 2024 RM'000", "Group 2025 RM'000"]
+        },
+        {
+          "purpose": "audited annual income facts",
+          "pdf_page": 31,
+          "printed_page": 29,
+          "table": "Income Statements",
+          "rows": ["Operating revenue", "Net operating income", "Profit before taxation and zakat"],
+          "columns": ["Group 2024 RM'000", "Group 2025 RM'000"]
+        },
+        {
+          "purpose": "reported regulatory capital ratio",
+          "pdf_page": 243,
+          "printed_page": 241,
+          "table": "Note 59(b) - Capital adequacy ratios of the Group and of the Bank",
+          "rows": ["CET1 Capital Ratio"],
+          "columns": ["Group 2024", "Group 2025"]
+        },
+        {
+          "purpose": "narrative claim",
+          "pdf_page": 14,
+          "printed_page": 12,
+          "table": "Analysis of Financial Statements > Review of FY2025 Financial Position > Total Assets",
+          "rows": ["first narrative paragraph"],
+          "columns": []
+        }
+      ],
+      "retrieval": "Open the official announcement, then attachment 3. A temporary local copy may be used for verification and must not be committed.",
+      "redistribution": "URL and small project-authored transcriptions only; the issuer PDF is excluded from the repository.",
+      "access_note": "The attachment is public but may reject some automated browser fetches. The official announcement remains the stable discovery route."
+    }
+  ],
+  "accounting_and_comparability": {
+    "framework": "MFRS Accounting Standards and IFRS Accounting Standards, as stated in the independent auditor's report",
+    "scope": "Maybank Group consolidated",
+    "currency": "Malaysian ringgit",
+    "unit_policy": "Primary statements use RM'000; the five-year summary uses RM million; ratios are percentages.",
+    "period_policy": "Income facts cover the calendar financial year ended 31 December. Balance-sheet and capital/liquidity ratios are reporting-date facts at 31 December.",
+    "restatement_caveat": "The five-year summary labels FY2022 restated for MFRS 17. FY2024 primary-statement comparatives used here are not labelled restated. FY2024 business-segment figures elsewhere in the report were restated for a 2025 structural change; this fixture does not use segment figures.",
+    "gap_status": "No gap for the FY2025/FY2024 comparison. No quarterly or pre-FY2024 detail is inferred."
+  }
+}
