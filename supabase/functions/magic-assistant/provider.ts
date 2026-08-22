@@ -78,8 +78,16 @@ export interface ProviderConfig {
 }
 
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
-export class ProviderUnavailableError extends Error {}
-export class ProviderResponseError extends Error {}
+export class ProviderUnavailableError extends Error {
+  constructor(message: string, public readonly statusCode = 0) {
+    super(message);
+  }
+}
+export class ProviderResponseError extends Error {
+  constructor(message: string, public readonly statusCode = 0) {
+    super(message);
+  }
+}
 
 function providerEndpoint(model: string): string {
   if (!(SUPPORTED_MODELS as readonly string[]).includes(model)) {
@@ -155,7 +163,6 @@ export async function proposeChart(
   config: ProviderConfig,
   fetcher: FetchLike = fetch,
 ): Promise<ChartProposal> {
-  const endpoint = providerEndpoint(config.model);
   const prompt = promptFor(request, evidence);
   const payload = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -171,44 +178,45 @@ export async function proposeChart(
     throw new Error("provider request exceeded byte cap");
   }
 
-  let response: Response | undefined;
-  for (let attempt = 0; attempt <= MAX_PROVIDER_RETRIES; attempt += 1) {
-    try {
-      response = await fetcher(endpoint, {
-        method: "POST",
-        redirect: "error",
-        signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
-        headers: {
-          "content-type": "application/json",
-          "x-goog-api-key": config.apiKey,
-        },
-        body: encoded,
-      });
-      if (!response.ok) {
-        await boundedText(response);
-        if ([408, 429, 500, 502, 503, 504].includes(response.status)) {
-          if (attempt < MAX_PROVIDER_RETRIES) continue;
-          throw new ProviderUnavailableError("provider unavailable");
+  const models = [config.model, ...SUPPORTED_MODELS.filter((model) => model !== config.model)];
+  let finalStatus = 0;
+  for (const [modelIndex, model] of models.entries()) {
+    const endpoint = providerEndpoint(model);
+    for (let attempt = 0; attempt <= MAX_PROVIDER_RETRIES; attempt += 1) {
+      try {
+        const response = await fetcher(endpoint, {
+          method: "POST",
+          redirect: "error",
+          signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
+          headers: {
+            "content-type": "application/json",
+            "x-goog-api-key": config.apiKey,
+          },
+          body: encoded,
+        });
+        if (!response.ok) {
+          finalStatus = response.status;
+          await boundedText(response);
+          if ([404, 408, 429, 500, 502, 503, 504].includes(response.status)) {
+            if (attempt < MAX_PROVIDER_RETRIES) continue;
+            break;
+          }
+          throw new ProviderResponseError("provider rejected request", response.status);
         }
-        throw new ProviderResponseError("provider rejected request");
+        try {
+          const outer = JSON.parse(await boundedText(response)) as unknown;
+          const proposal = JSON.parse(candidateText(outer)) as unknown;
+          return parseAndResolveProposal(proposal, evidence);
+        } catch {
+          throw new ProviderResponseError("provider returned invalid chart proposal", response.status);
+        }
+      } catch (error) {
+        if (error instanceof ProviderResponseError) throw error;
+        if (attempt < MAX_PROVIDER_RETRIES) continue;
+        if (modelIndex < models.length - 1) break;
+        throw new ProviderUnavailableError("provider unavailable", finalStatus);
       }
-    } catch (error) {
-      if (error instanceof ProviderResponseError || error instanceof ProviderUnavailableError) {
-        throw error;
-      }
-      if (attempt >= MAX_PROVIDER_RETRIES) {
-        throw new ProviderUnavailableError("provider unavailable");
-      }
-      continue;
     }
-    break;
   }
-  if (!response) throw new ProviderUnavailableError("provider unavailable");
-  try {
-    const outer = JSON.parse(await boundedText(response)) as unknown;
-    const proposal = JSON.parse(candidateText(outer)) as unknown;
-    return parseAndResolveProposal(proposal, evidence);
-  } catch {
-    throw new ProviderResponseError("provider returned invalid chart proposal");
-  }
+  throw new ProviderUnavailableError("provider unavailable", finalStatus);
 }

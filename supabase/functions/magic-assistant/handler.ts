@@ -103,7 +103,7 @@ async function boundedJson(request: Request): Promise<unknown> {
 }
 
 function providerConfig(env: Environment): ProviderConfig {
-  const apiKey = env.GEMINI_API_KEY?.trim();
+  const apiKey = env.GEMINI_API_KEY?.trim() || env.GOOGLE_API_KEY?.trim();
   if (!apiKey) throw new NotConfiguredError("Gemma provider is not configured");
   const model = env.GEMMA_MODEL?.trim() || "gemma-4-26b-a4b-it";
   if (!(SUPPORTED_MODELS as readonly string[]).includes(model)) {
@@ -204,10 +204,17 @@ export function createHandler(dependencies: HandlerDependencies) {
         );
       }
       if (error instanceof ProviderUnavailableError) {
+        console.error(JSON.stringify({
+          event: "magic_assistant_provider_unavailable",
+          status: error.statusCode,
+        }));
+        const code = error.statusCode === 429
+          ? "provider_rate_limited"
+          : "provider_temporarily_unavailable";
         return jsonResponse(
           {
             state: "offline",
-            code: "provider_offline",
+            code,
             retryable: true,
             disclosure: SENT_DISCLOSURE,
           },
@@ -216,6 +223,10 @@ export function createHandler(dependencies: HandlerDependencies) {
         );
       }
       if (error instanceof ProviderResponseError) {
+        console.error(JSON.stringify({
+          event: "magic_assistant_provider_rejected_response",
+          status: error.statusCode,
+        }));
         return jsonResponse(
           {
             state: "error",

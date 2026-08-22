@@ -7,6 +7,7 @@ function environment(): Record<string, string | undefined> {
     SUPABASE_PUBLISHABLE_KEYS: Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"),
     SUPABASE_ANON_KEY: Deno.env.get("SUPABASE_ANON_KEY"),
     GEMINI_API_KEY: Deno.env.get("GEMINI_API_KEY"),
+    GOOGLE_API_KEY: Deno.env.get("GOOGLE_API_KEY"),
     GEMMA_MODEL: Deno.env.get("GEMMA_MODEL"),
     MAGIC_ASSISTANT_ALLOWED_ORIGINS: Deno.env.get("MAGIC_ASSISTANT_ALLOWED_ORIGINS"),
   };

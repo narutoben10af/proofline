@@ -19,6 +19,7 @@ import {
   MAX_PROVIDER_RETRIES,
   proposeChart,
   ProviderResponseError,
+  SUPPORTED_MODELS,
 } from "./provider.ts";
 
 const SESSION = "src-A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6";
@@ -325,7 +326,7 @@ Deno.test("Gemma failures are bounded and invented IDs are rejected locally", as
       },
     );
   });
-  assertEquals(transientCalls, MAX_PROVIDER_RETRIES + 1);
+  assertEquals(transientCalls, (MAX_PROVIDER_RETRIES + 1) * SUPPORTED_MODELS.length);
 
   let malformedCalls = 0;
   await assertRejects(
