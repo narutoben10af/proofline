@@ -1,7 +1,7 @@
 # Deterministic ingestion boundary
 
-This slice implements a deliberately narrow, local ingestion path. It does not infer financial
-meaning, call a model, calculate metrics, or claim universal document support.
+This slice implements a deliberately narrow, local ingestion and workbook-normalization path. It
+does not call a model, extract narrative claims, or claim universal document support.
 
 ## Implemented
 
@@ -10,10 +10,17 @@ meaning, call a model, calculate metrics, or claim universal document support.
 - Structural `.xlsx` reading with openpyxl in read-only mode. Every non-empty cell retains document
   ID, sheet, coordinate, display value, data type, and a deterministic source-span ID.
 - Formula cells are never evaluated. A formula without a cached value is returned as formula text
-  with a typed warning; a cached value is retained only with an explicit unverified-cache warning.
+  with a typed warning. Cached formula values remain unverified and are not safe normalizer inputs.
 - A provider-neutral OCR protocol and `PaddleOcrCompatibleAdapter` for an injected server-side OCR
   callable. OCR confidence and warnings remain attached to page evidence.
-- Tiny synthetic PDF/XLSX tests; no issuer document, secret, or private content is stored.
+- Deterministic workbook normalization for row-oriented or transposed statement matrices. It
+  requires explicit issuer, entity scope, ISO currency, source scale, and restatement metadata;
+  recognizes a conservative Tier-0 concept vocabulary; converts monetary values to currency base
+  units; and retains value, label, period, and metadata cell spans with confidence and warnings.
+- Tier-0 calculation-plan generation only when every required concept/period intersection is
+  unique. Conflicting metadata and duplicate facts fail closed rather than selecting a value.
+- Synthetic PDF/XLSX tests across unrelated issuers, currencies, and layouts; no issuer document,
+  secret, or private content is stored.
 
 ## Optional, not configured
 
@@ -30,9 +37,12 @@ confidence)` lines through the existing adapter. Until then, scanned pages retur
 - Limits bound file size, page count, OCR raster and output size, ZIP entry and expanded-size totals,
   sheet count, declared worksheet dimensions, extracted cell count, and extracted quote length.
   Container CPU/memory/time limits remain a deployment responsibility.
-- Native/OCR text and spreadsheet values are untrusted evidence candidates. Downstream schema,
-  entity, period, unit, and human-review gates still apply.
+- Native/OCR text and spreadsheet values are untrusted evidence candidates. The deterministic
+  normalizer recognizes only exact allowlisted labels and explicit metadata. Unsupported labels,
+  fiscal-year shorthand without a date, multi-currency tables, per-column scales/restatement
+  bases, merged-cell headers, and more complex statement structures require a reviewed mapping.
 - Confidence is an extraction signal, not an accuracy guarantee. OCR output must not become
   authoritative arithmetic or classification.
 - This slice does not provide malware scanning, password recovery, secure erasure, PDPA compliance,
-  table reconstruction, formula calculation, or arbitrary workbook support.
+  PDF table reconstruction, formula calculation, narrative claim extraction, or universal
+  workbook support.
