@@ -72,14 +72,14 @@ Only public hackathon fixtures may be sent to hosted Gemma 4. According to the c
 
 ## Getting started
 
-Python 3.12 is the tested runtime. Create an isolated environment, install the exact direct
-dependencies, run the tests, and start the API:
+Python 3.12 is the tested runtime. Install
+[uv](https://docs.astral.sh/uv/getting-started/installation/), sync the fully resolved lockfile,
+run the tests, and start the API:
 
 ```bash
-python3.12 -m venv .venv
-.venv/bin/python -m pip install -r requirements.lock
-PYTHONPATH=src .venv/bin/python -m pytest
-PYTHONPATH=src .venv/bin/python -m uvicorn proofline.api:app --reload
+uv sync --locked --extra dev
+uv run --locked --extra dev pytest
+uv run --locked uvicorn proofline.api:app --reload
 ```
 
 Open `http://127.0.0.1:8000/docs`, check `GET /health`, or submit the request portion of
@@ -103,8 +103,8 @@ later reviewed adapter.
 - There is no database, document-byte upload, OCR, hosted model call, frontend, or production
   privacy/compliance claim in this slice. Session endpoints retain and delete process-local intake
   metadata only; they do not yet run processing adapters.
-- `requirements.lock` pins direct dependencies for repeatable hackathon setup but is not a fully
-  resolved cross-platform transitive lock.
+- `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
+  human-edited dependency declaration.
 
 ## Contributing
 
