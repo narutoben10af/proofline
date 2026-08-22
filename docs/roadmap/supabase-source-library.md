@@ -2,11 +2,13 @@
 
 ## Current product truth
 
-Supabase is not configured or used by this repository. The current Source Library is one
+The MagicFin project exists, and this repository now contains an unapplied migration plus disabled
+adapter seam. Supabase is still not configured or used by the running application. The current
+Source Library is one
 process-local `SessionRepository`, one app-owned `TemporaryBlobStore`, and one strict
 `ValidationService`. Sign-in UI must display **Not configured** and continue to offer the keyless
-public demo. There are no Supabase URLs, publishable keys, service-role keys, migrations, buckets or
-production-security claims in this slice.
+public demo. There are no committed keys, applied schema changes, deployed functions or
+production-security claims in this slice. See [the guarded setup path](../supabase-persistence-setup.md).
 
 The local interfaces deliberately separate capability/CSRF authorization and deletion
 orchestration from metadata, blobs and validation. A later reviewed implementation can replace the

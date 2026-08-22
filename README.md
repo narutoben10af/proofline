@@ -33,6 +33,10 @@ The temporary Source Library adds strict PDF/XLSX intake under private process-l
 single-process/single-worker only. It is not supported for confidential production input; see
 [ADR 0004](docs/architecture/0004-temporary-process-local-source-library.md).
 
+A disabled Supabase persistence seam and unapplied owner-RLS migration are available for review.
+They do not change the process-local default or claim production readiness; see the
+[guarded setup path](docs/supabase-persistence-setup.md).
+
 ## Intended demo flow
 
 1. Load one approved financial-report PDF and a related spreadsheet or clearly labeled derived fixture.

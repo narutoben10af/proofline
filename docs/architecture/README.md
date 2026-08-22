@@ -10,6 +10,7 @@ Architecture decision records (ADRs) capture consequential technical choices and
 - [ADR 0003: Render reports only from canonical immutable bundles](0003-canonical-report-rendering.md)
 - [ADR 0004: Use temporary process-local Source Library storage](0004-temporary-process-local-source-library.md)
 - [ADR 0005: Provider-neutral, server-only model boundary](0005-provider-neutral-model-boundary.md)
+- [ADR 0006: Gate Supabase persistence behind reviewed Auth and RLS](0006-gate-supabase-persistence-behind-auth-and-rls.md)
 
 ## Adding an ADR
 
