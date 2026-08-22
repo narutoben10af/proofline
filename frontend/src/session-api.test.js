@@ -1,0 +1,95 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  createSourceSession,
+  deleteSourceSession,
+  getSourceSession,
+  listSourceFiles,
+  loadPublicDemo,
+  sourceContentUrl,
+  uploadSource,
+} from "./session-api";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("Source Library API adapter", () => {
+  it("uses relative same-origin requests and keeps the capability out of JavaScript", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ session_id: "src-opaque" }) }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await createSourceSession();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/sessions",
+      expect.objectContaining({ method: "POST", credentials: "same-origin" }),
+    );
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain("capability");
+  });
+
+  it("sends CSRF only as a header for upload and deletion", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ status: "complete" }) }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const session = { session_id: "src-opaque", csrf_token: "csrf-memory-only" };
+    const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" });
+
+    await uploadSource(session, "report_pdf", file);
+    await deleteSourceSession(session);
+
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({
+      "X-Proofline-CSRF": "csrf-memory-only",
+    });
+    expect(fetchMock.mock.calls[0][1].body.get("role")).toBe("report_pdf");
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: { "X-Proofline-CSRF": "csrf-memory-only" },
+      }),
+    );
+  });
+
+  it("keeps public demo selection explicit and surfaces stable safe errors", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ verified_cached_output: true }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 422,
+        json: () => Promise.resolve({ reason_code: "MACROS_NOT_ALLOWED" }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await loadPublicDemo("apple-fy2025");
+    await expect(loadPublicDemo("bad-input")).rejects.toMatchObject({
+      reasonCode: "MACROS_NOT_ALLOWED",
+      message: "Macro-enabled workbooks are not accepted.",
+    });
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/public-demo/apple-fy2025");
+  });
+
+  it("provides encoded status, list, preview, and download seams", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ files: [] }) }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const session = { session_id: "src-safe/segment" };
+
+    await getSourceSession(session);
+    await listSourceFiles(session);
+
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/sessions/src-safe%2Fsegment");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/sessions/src-safe%2Fsegment/files");
+    expect(sourceContentUrl(session, "file/a", "inline")).toBe(
+      "/api/sessions/src-safe%2Fsegment/files/file%2Fa/content?disposition=inline",
+    );
+    expect(() => sourceContentUrl(session, "file", "unsafe")).toThrow("Invalid disposition");
+  });
+});
