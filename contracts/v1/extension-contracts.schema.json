@@ -1,0 +1,333 @@
+{
+  "$defs": {
+    "AnalysisHistorySummary": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "cached_output": {
+          "title": "Cached Output",
+          "type": "boolean"
+        },
+        "classification_counts": {
+          "$ref": "#/$defs/ClassificationCounts"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "session_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Session Id",
+          "type": "string"
+        },
+        "session_local_only": {
+          "const": true,
+          "default": true,
+          "title": "Session Local Only",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "analysis_id",
+        "session_id",
+        "created_at",
+        "classification_counts",
+        "cached_output"
+      ],
+      "title": "AnalysisHistorySummary",
+      "type": "object"
+    },
+    "ClassificationCounts": {
+      "additionalProperties": false,
+      "properties": {
+        "contradicted": {
+          "minimum": 0,
+          "title": "Contradicted",
+          "type": "integer"
+        },
+        "supported": {
+          "minimum": 0,
+          "title": "Supported",
+          "type": "integer"
+        },
+        "uncertain": {
+          "minimum": 0,
+          "title": "Uncertain",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "supported",
+        "uncertain",
+        "contradicted"
+      ],
+      "title": "ClassificationCounts",
+      "type": "object"
+    },
+    "EconomicContextPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_caveat": {
+          "const": "Context only; no causal relationship is asserted.",
+          "default": "Context only; no causal relationship is asserted.",
+          "title": "Causation Caveat",
+          "type": "string"
+        },
+        "geography": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Geography",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "indicator": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Indicator",
+          "type": "string"
+        },
+        "period": {
+          "$ref": "#/$defs/Period"
+        },
+        "source_date": {
+          "format": "date",
+          "title": "Source Date",
+          "type": "string"
+        },
+        "source_url": {
+          "title": "Source Url",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "id",
+        "indicator",
+        "geography",
+        "period",
+        "value",
+        "unit",
+        "source_url",
+        "source_date"
+      ],
+      "title": "EconomicContextPoint",
+      "type": "object"
+    },
+    "Period": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_weeks": {
+          "anyOf": [
+            {
+              "maximum": 54,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Weeks"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        }
+      },
+      "required": [
+        "end"
+      ],
+      "title": "Period",
+      "type": "object"
+    },
+    "ReportSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "analysis_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Analysis Id",
+          "type": "string"
+        },
+        "classification_counts": {
+          "$ref": "#/$defs/ClassificationCounts"
+        },
+        "economic_context_point_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Economic Context Point Ids",
+          "type": "array"
+        },
+        "evidence_chain_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Evidence Chain Sha256",
+          "type": "string"
+        },
+        "finding_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "maxItems": 100,
+          "title": "Finding Ids",
+          "type": "array"
+        },
+        "includes_forecast": {
+          "const": false,
+          "default": false,
+          "title": "Includes Forecast",
+          "type": "boolean"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 50,
+          "minItems": 1,
+          "title": "Limitations",
+          "type": "array"
+        },
+        "review_status": {
+          "const": "reviewed",
+          "default": "reviewed",
+          "title": "Review Status",
+          "type": "string"
+        },
+        "reviewed_at": {
+          "format": "date-time",
+          "title": "Reviewed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "analysis_id",
+        "title",
+        "reviewed_at",
+        "classification_counts",
+        "finding_ids",
+        "evidence_chain_sha256",
+        "economic_context_point_ids",
+        "limitations"
+      ],
+      "title": "ReportSnapshot",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "analysis_history": {
+      "items": {
+        "$ref": "#/$defs/AnalysisHistorySummary"
+      },
+      "title": "Analysis History",
+      "type": "array"
+    },
+    "economic_context_points": {
+      "items": {
+        "$ref": "#/$defs/EconomicContextPoint"
+      },
+      "title": "Economic Context Points",
+      "type": "array"
+    },
+    "report_snapshots": {
+      "items": {
+        "$ref": "#/$defs/ReportSnapshot"
+      },
+      "title": "Report Snapshots",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "economic_context_points",
+    "analysis_history",
+    "report_snapshots"
+  ],
+  "title": "ExtensionContracts",
+  "type": "object"
+}
