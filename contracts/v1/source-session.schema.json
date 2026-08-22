@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "SourceFileMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "byte_count": {
+          "minimum": 0,
+          "title": "Byte Count",
+          "type": "integer"
+        },
+        "canonical_type": {
+          "enum": [
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          ],
+          "title": "Canonical Type",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "file_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "File Id",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "report_pdf",
+            "workbook"
+          ],
+          "title": "Role",
+          "type": "string"
+        },
+        "uploaded_at": {
+          "format": "date-time",
+          "title": "Uploaded At",
+          "type": "string"
+        },
+        "validation_status": {
+          "enum": [
+            "Uploading",
+            "Checking",
+            "Ready",
+            "Needs attention"
+          ],
+          "title": "Validation Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_id",
+        "display_name",
+        "canonical_type",
+        "byte_count",
+        "uploaded_at",
+        "validation_status",
+        "role",
+        "expires_at"
+      ],
+      "title": "SourceFileMetadata",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "absolute_expires_at": {
+      "format": "date-time",
+      "title": "Absolute Expires At",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "files": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/SourceFileMetadata"
+      },
+      "title": "Files",
+      "type": "array"
+    },
+    "idle_expires_at": {
+      "format": "date-time",
+      "title": "Idle Expires At",
+      "type": "string"
+    },
+    "last_activity_at": {
+      "format": "date-time",
+      "title": "Last Activity At",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "OPEN",
+        "PROCESSING",
+        "DELETING",
+        "DELETED"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "state",
+    "created_at",
+    "last_activity_at",
+    "idle_expires_at",
+    "absolute_expires_at"
+  ],
+  "title": "SourceSessionStatus",
+  "type": "object"
+}

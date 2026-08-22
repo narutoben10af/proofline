@@ -300,6 +300,70 @@ class DeletionReceipt(FrozenModel):
     disclosure: str
 
 
+class SourceFileMetadata(FrozenModel):
+    file_id: Identifier
+    display_name: str = Field(min_length=1, max_length=255)
+    canonical_type: Literal[
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]
+    byte_count: int = Field(ge=0)
+    uploaded_at: datetime
+    validation_status: Literal["Uploading", "Checking", "Ready", "Needs attention"]
+    role: Literal["report_pdf", "workbook"]
+    expires_at: datetime
+
+
+class SourceSessionStatus(FrozenModel):
+    schema_version: Literal["1.0.0"] = SCHEMA_VERSION
+    session_id: Identifier
+    state: Literal["OPEN", "PROCESSING", "DELETING", "DELETED"]
+    created_at: datetime
+    last_activity_at: datetime
+    idle_expires_at: datetime
+    absolute_expires_at: datetime
+    files: tuple[SourceFileMetadata, ...] = ()
+
+
+class SourceSessionCreated(SourceSessionStatus):
+    csrf_token: str = Field(min_length=32, max_length=128)
+
+
+class RemovalCount(FrozenModel):
+    count: int = Field(ge=0)
+    bytes: int = Field(ge=0)
+
+
+class SourceDeletionReceipt(FrozenModel):
+    receipt_version: Literal["1.0.0"] = "1.0.0"
+    scope_version: Literal["1.0.0"] = "1.0.0"
+    receipt_id: Identifier
+    session_id: Identifier
+    requested_at: datetime
+    completed_at: datetime
+    status: Literal["complete", "partial"]
+    removed: dict[Literal["source_files", "derived_artifacts", "session_metadata"], RemovalCount]
+    app_managed_directory_gone: bool
+    source_material_sent_to_provider: bool
+    claim: Literal[
+        "Deleted from this running container’s application-managed session storage."
+    ] = "Deleted from this running container’s application-managed session storage."
+    exclusions: tuple[
+        Literal[
+            "immutable fixtures",
+            "user/browser downloads",
+            "infrastructure backups/logs",
+            "third-party retention",
+        ],
+        ...,
+    ] = (
+        "immutable fixtures",
+        "user/browser downloads",
+        "infrastructure backups/logs",
+        "third-party retention",
+    )
+
+
 class EconomicContextPoint(FrozenModel):
     id: Identifier
     indicator: str = Field(min_length=1, max_length=128)
