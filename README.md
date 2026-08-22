@@ -1,4 +1,4 @@
-# Proofline
+# MagicFin
 
 **Every financial claim needs a receipt.**
 
