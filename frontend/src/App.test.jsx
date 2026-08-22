@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App, productFixture } from "./App";
-import { MAX_REVIEWED_REPORT_PDF_BYTES, requestReviewedPdf } from "./product-contract";
+import { buildReviewedReport, MAX_REVIEWED_REPORT_PDF_BYTES, requestReviewedPdf } from "./product-contract";
 
 const originalViewport = { width: window.innerWidth, height: window.innerHeight };
 
@@ -10,15 +10,20 @@ function fakeAuthHandoff(initialState, callbackReturnTo = "/", privateStorage = 
   let state = initialState;
   const listeners = new Set();
   const auth = {
+    config: { configured: initialState.configured ?? true },
     state,
     subscribe: vi.fn((listener) => { listeners.add(listener); listener(state); return () => listeners.delete(listener); }),
     initialize: vi.fn().mockResolvedValue(state),
     signInWithGoogle: vi.fn().mockResolvedValue(state),
     signOut: vi.fn().mockResolvedValue(state),
+    requireAuthenticatedOwner: vi.fn().mockImplementation(async () => {
+      if (state.status !== "authenticated") throw new Error("AUTH_REQUIRED");
+      return { ownerId: state.ownerId, accessToken: "verified.user.access-token" };
+    }),
     destroy: vi.fn(),
   };
   return {
-    handoff: { auth, config: { configured: initialState.configured ?? true }, privateStorage, handleCallback: vi.fn().mockResolvedValue({ state, returnTo: callbackReturnTo }) },
+    handoff: { auth, config: auth.config, privateStorage, handleCallback: vi.fn().mockResolvedValue({ state, returnTo: callbackReturnTo }) },
     emit(nextState) { state = nextState; auth.state = nextState; for (const listener of listeners) listener(nextState); },
   };
 }
@@ -42,12 +47,12 @@ const liveAnalysisResponse = {
     { id: "fcf-2026", concept: "Free cash flow", numeric_value: 14.2, display_value: "14.2%", period: { end: "FY2026" }, source_span_id: "span-values" },
   ],
   metric_results: [
-    { id: "result-growth", metric_id: "revenue_growth_yoy", result: 9.66, formula_id: "revenue-growth", input_observation_ids: ["rev-2025", "rev-2026"] },
-    { id: "result-margin", metric_id: "operating_margin", result: 21.2, formula_id: "operating-margin", input_observation_ids: ["op-2026", "rev-2026"] },
+    { id: "result-growth", metric_id: "revenue_growth_yoy", result: 0.0966, formula_id: "revenue-growth", input_observation_ids: ["rev-2025", "rev-2026"] },
+    { id: "result-margin", metric_id: "operating_margin", result: 0.212, formula_id: "operating-margin", input_observation_ids: ["op-2026", "rev-2026"] },
     { id: "result-current", metric_id: "current_ratio", result: 1.55, formula_id: "current-ratio", input_observation_ids: ["current-2026"] },
-    { id: "result-fcf", metric_id: "fcf_margin", result: 14.2, formula_id: "fcf-margin", input_observation_ids: ["fcf-2026", "rev-2026"] },
+    { id: "result-fcf", metric_id: "fcf_margin", result: 0.142, formula_id: "fcf-margin", input_observation_ids: ["fcf-2026", "rev-2026"] },
   ],
-  claims: [{ id: "claim-growth", text: "Revenue grew 11%.", asserted_value: "11%", source_span_id: "span-claim" }],
+  claims: [{ id: "claim-growth", text: "Revenue grew 11%.", metric_id: "revenue_growth_yoy", asserted_value: "0.11", source_span_id: "span-claim" }],
   findings: [{ id: "finding-growth", claim_id: "claim-growth", metric_result_id: "result-growth", classification: "contradicted", rationale: "Uploaded figures calculate to 9.66%, not the stated 11%.", tolerance: 0.1, evidence_source_span_ids: ["span-claim", "span-values"], suggested_investigation: "Reconcile the uploaded growth statement." }],
   report_bundle: { schema_version: "1.0.0", company: "Meridian Live plc" },
 };
@@ -148,25 +153,29 @@ describe("MagicFin product shell", () => {
     expect(screen.getByText(/private files & sources uploads are owner-scoped/i)).toBeInTheDocument();
   });
 
-  it("uses the authenticated RPC and private-storage handoff without claiming OCR", async () => {
+  it("uses the authenticated analysis API instead of the storage-only browser handoff", async () => {
     const user = userEvent.setup();
     const ownerId = "10000000-0000-4000-8000-000000000001";
     const privateStorage = {
-      createSession: vi.fn().mockResolvedValue({ backend: "supabase", session_id: "11000000-0000-4000-8000-000000000001" }),
-      uploadSource: vi.fn().mockImplementation(({ file }) => Promise.resolve({ display_name: file.name })),
+      createSession: vi.fn(),
+      uploadSource: vi.fn(),
     };
     const fake = fakeAuthHandoff({ status: "authenticated", ownerId }, "/", privateStorage);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 201,
+      json: async () => ({ session_id: "11000000-0000-4000-8000-000000000001", persistence: "supabase-private" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
     render(<App initialRoute="/files" authHandoffFactory={() => fake.handoff} />);
     await user.click(screen.getByRole("button", { name: /connect live file service/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
-    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
-      new File(["%PDF"], "private-report.pdf", { type: "application/pdf" }),
-      new File(["workbook"], "private-workbook.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-    ] } });
-    await waitFor(() => expect(screen.getByRole("heading", { name: /files stored. analysis is not connected yet/i })).toBeInTheDocument());
-    expect(privateStorage.createSession).toHaveBeenCalledOnce();
-    expect(privateStorage.uploadSource).toHaveBeenCalledTimes(2);
-    expect(screen.getByText(/ocr and live analysis are not connected yet/i)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/authenticated/sessions",
+      expect.objectContaining({ method: "POST", credentials: "omit" }),
+    );
+    expect(privateStorage.createSession).not.toHaveBeenCalled();
+    expect(privateStorage.uploadSource).not.toHaveBeenCalled();
   });
 
   it("sends the Home analysis action to the real uploader without simulating completion", async () => {
@@ -381,6 +390,19 @@ describe("MagicFin product shell", () => {
     expect(screen.queryByText(/analysis complete/i)).not.toBeInTheDocument();
   });
 
+  it("never falls back to the unauthenticated session API when Supabase Auth is not configured", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App initialRoute="/files" />);
+
+    await user.click(screen.getByRole("button", { name: /connect live file service/i }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent(/authenticated private upload is not configured/i);
+    expect(screen.getByRole("alert")).toHaveTextContent(/demo data remains unchanged/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("keeps sample data secondary and never presents it as uploaded analysis", async () => {
     const user = userEvent.setup();
     render(<App initialRoute="/files" />);
@@ -397,13 +419,14 @@ describe("MagicFin product shell", () => {
 
   it("updates dashboard graphs and summary only from a successful live analysis response", async () => {
     const user = userEvent.setup();
+    const fake = fakeAuthHandoff({ status: "authenticated", ownerId: "10000000-0000-4000-8000-000000000001" });
     const jsonResponse = (body, ok = true) => ({ ok, status: ok ? 200 : 422, json: async () => body });
     vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ session_id: "live-session", csrf_token: "memory-only" }))
+      .mockResolvedValueOnce(jsonResponse({ session_id: "11000000-0000-4000-8000-000000000001", persistence: "supabase-private" }))
       .mockResolvedValueOnce(jsonResponse({ display_name: "Meridian_Report_2026.pdf" }))
       .mockResolvedValueOnce(jsonResponse({ display_name: "Meridian_Financials_2026.xlsx" }))
       .mockResolvedValueOnce(jsonResponse(liveAnalysisResponse)));
-    render(<App initialRoute="/files" />);
+    render(<App initialRoute="/files" authHandoffFactory={() => fake.handoff} />);
     await user.click(screen.getByRole("button", { name: /connect live file service/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
     fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
@@ -414,19 +437,21 @@ describe("MagicFin product shell", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: /live analysis complete/i })).toBeInTheDocument());
     await user.click(screen.getByRole("button", { name: /view updated dashboard/i }));
     expect(screen.getByRole("heading", { name: /meridian live plc/i })).toBeInTheDocument();
+    expect(screen.getAllByText("9.66%").length).toBeGreaterThan(0);
     expect(screen.getByText(/uploaded figures calculate to 9.66%, not the stated 11%/i)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /revenue, usd units, reported history from FY2025 through FY2026/i })).toBeInTheDocument();
   });
 
   it("preserves the previous dashboard when live analysis fails and never falls back to sample data", async () => {
     const user = userEvent.setup();
+    const fake = fakeAuthHandoff({ status: "authenticated", ownerId: "10000000-0000-4000-8000-000000000001" });
     const jsonResponse = (body, ok = true) => ({ ok, status: ok ? 200 : 503, json: async () => body });
     vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ session_id: "failed-session", csrf_token: "memory-only" }))
+      .mockResolvedValueOnce(jsonResponse({ session_id: "11000000-0000-4000-8000-000000000002", persistence: "supabase-private" }))
       .mockResolvedValueOnce(jsonResponse({ display_name: "Arbitrary.pdf" }))
       .mockResolvedValueOnce(jsonResponse({ display_name: "Arbitrary.xlsx" }))
       .mockResolvedValueOnce(jsonResponse({ reason_code: "PROVIDER_ACCESS_REQUIRED" }, false)));
-    render(<App initialRoute="/files" />);
+    render(<App initialRoute="/files" authHandoffFactory={() => fake.handoff} />);
     await user.click(screen.getByRole("button", { name: /connect live file service/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
     fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
@@ -438,6 +463,15 @@ describe("MagicFin product shell", () => {
     await user.click(within(screen.getByRole("navigation", { name: /main navigation/i })).getByRole("button", { name: "Home" }));
     expect(screen.getByRole("heading", { name: /northstar industrial plc/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /meridian live plc/i })).not.toBeInTheDocument();
+  });
+
+  it("labels the live JSON report as upload-derived instead of fixture-backed", () => {
+    const report = buildReviewedReport({
+      ...productFixture,
+      session: { ...productFixture.session, id: "analysis:live", mode: "live" },
+    });
+    expect(report.limitations).toContain("Authenticated upload-derived analysis; human review is required");
+    expect(report.limitations.join(" ")).not.toMatch(/verified demo fixture only|no issuer files are bundled/i);
   });
 
   it("combines upload and a searchable Source Library while preserving old source deep links", async () => {

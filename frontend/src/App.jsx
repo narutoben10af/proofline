@@ -9,7 +9,11 @@ import {
 import { ReviewDesk, downloadReviewedReport } from "./ReviewDesk";
 import { createMagicFinAuthHandoff } from "./auth";
 import { adaptProductContract, buildDeterministicDemoPdf, getAssistantAdapter, getAssistantChartSpecs, getProviderConnectionAdapter, getReviewedReportBundle, metricDefinitionRegistry, productFixture, requestReviewedPdf } from "./product-contract";
-import { analyzeSourceSession, createSourceSession, uploadSource } from "./session-api";
+import {
+  analyzeAuthenticatedSourceSession,
+  createAuthenticatedSourceSession,
+  uploadAuthenticatedSource,
+} from "./session-api";
 
 const TrendChart = lazy(() => import("./TrendChart"));
 
@@ -233,7 +237,7 @@ function DashboardSignals({ data }) {
   const liquidity = data.metrics.find((item) => item.id === "current-ratio");
   const signals = [
     ["Trend", `${revenue.label} changed ${revenue.delta} in ${revenue.period}.`],
-    ["Pattern", `All ${data.trend.length} reported demo periods are shown for comparison.`],
+    ["Pattern", `All ${data.trend.length} reported periods are shown for comparison.`],
     ["Exception", `${data.review.claim.value} was claimed; the cited calculation shows ${data.review.result.value}.`],
     ["Evidence flag", `${liquidity.label} changed ${liquidity.delta} ${liquidity.deltaLabel}.`],
   ];
@@ -258,13 +262,13 @@ function CompanyPage({ data, onNavigate, onOpenAssistant, onOpenSource }) {
       <HeadlineMetrics metrics={data.metrics} />
       <TrendFigure data={data} onNavigate={onNavigate} />
       <DashboardSignals data={data} />
-      <div className="company-bottom"><section className="summary-card"><p className="eyebrow">Factual summary</p><h2>Reported performance and narrative need one clear review.</h2><p>{data.summary}</p><div className="compact-statuses"><span><CheckCircle size={18} />6 <small>Supported</small></span><span><Info size={18} />2 <small>Uncertain</small></span><span><Warning size={18} />1 <small>Contradicted</small></span></div><div className="summary-actions"><button className="button primary" type="button" onClick={() => onNavigate("/review")}>Open Review Desk</button><button className="button secondary" type="button" onClick={(event) => onOpenAssistant(event.currentTarget)}><MagicWand size={17} />Open Magic Assistant</button></div></section><section className="priorities-card"><p className="eyebrow">Review priorities</p><h2>Where human judgment matters.</h2><ol>{data.reviewPriorities.map((item, index) => <li key={item.id}><span>{index + 1}</span><div><strong>{item.label}</strong><small>{item.status}</small></div></li>)}</ol><div className="evidence-flag"><Warning size={18} weight="fill" /><p><strong>Evidence flag</strong>The report states {data.review.claim.value}; cited figures calculate to {data.review.result.value}.</p></div><div className="report-row"><button className="inline-link" type="button" onClick={() => downloadReviewedReport(undefined, data)}>Export JSON evidence <DownloadSimple size={15} /></button><button className="inline-link disabled-link" type="button" disabled aria-describedby="pdf-help">PDF unavailable</button></div><small id="pdf-help">Server PDF export is not configured.</small></section></div>
+      <div className="company-bottom"><section className="summary-card"><p className="eyebrow">Factual summary</p><h2>Reported performance and narrative need one clear review.</h2><p>{data.summary}</p><div className="compact-statuses"><span><CheckCircle size={18} />{data.review.summary.supported} <small>Supported</small></span><span><Info size={18} />{data.review.summary.uncertain} <small>Uncertain</small></span><span><Warning size={18} />{data.review.summary.contradicted} <small>Contradicted</small></span></div><div className="summary-actions"><button className="button primary" type="button" onClick={() => onNavigate("/review")}>Open Review Desk</button><button className="button secondary" type="button" onClick={(event) => onOpenAssistant(event.currentTarget)}><MagicWand size={17} />Open Magic Assistant</button></div></section><section className="priorities-card"><p className="eyebrow">Review priorities</p><h2>Where human judgment matters.</h2><ol>{data.reviewPriorities.map((item, index) => <li key={item.id}><span>{index + 1}</span><div><strong>{item.label}</strong><small>{item.status}</small></div></li>)}</ol><div className="evidence-flag"><Warning size={18} weight="fill" /><p><strong>Evidence flag</strong>The report states {data.review.claim.value}; cited figures calculate to {data.review.result.value}.</p></div><div className="report-row"><button className="inline-link" type="button" onClick={() => downloadReviewedReport(undefined, data)}>Export JSON evidence <DownloadSimple size={15} /></button><button className="inline-link disabled-link" type="button" disabled aria-describedby="pdf-help">PDF unavailable</button></div><small id="pdf-help">Server PDF export is not configured.</small></section></div>
       <section className="source-section" aria-labelledby="source-set-title"><div className="section-heading"><div><p className="eyebrow">Source set</p><h2 id="source-set-title">Claims stay with their numbers.</h2></div><button className="inline-link" type="button" onClick={() => onNavigate("/files#sources")}>Open Files & Sources <ArrowRight size={15} /></button></div><div className="source-grid">{data.sources.map((source) => <SourceCard source={source} key={source.id} onOpen={onOpenSource} />)}</div></section>
     </div>
   );
 }
 
-function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady, authState, privateStorage }) {
+function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady, auth, authState }) {
   const inputRef = useRef(null);
   const [state, setState] = useState("empty");
   const [files, setFiles] = useState([]);
@@ -276,7 +280,6 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
   const query = search.trim().toLowerCase();
   const visibleSources = sources.filter((source) => (filter === "all" || (filter === "ready" ? source.status === "Validated" : source.status !== "Validated")) && (!query || `${source.name} ${source.kind} ${source.date} ${source.provenance} ${source.anchor}`.toLowerCase().includes(query)));
   const expected = [sources[0]?.name, sources[1]?.name].filter(Boolean);
-  const privateSession = session?.backend === "supabase";
   const choose = async (selected) => {
     const names = selected.map((file) => file.name);
     setFiles(names);
@@ -287,32 +290,22 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
         return;
       }
       setState("server-loading");
-      setSessionMessage(privateSession ? "Registering and storing both files in your private source session." : "Uploading and checking both files in the temporary private session.");
+      setSessionMessage("Uploading and checking both files in the temporary private session.");
       try {
-        if (privateSession) {
-          if (!privateStorage || authState?.status !== "authenticated") {
-            throw new Error("Sign in again before uploading to the private source library.");
-          }
-          const results = await Promise.all(selected.map((file) => privateStorage.uploadSource({
-            sessionId: session.session_id,
-            role: file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook",
-            file,
-          })));
-          setFiles(results.map((item, index) => item?.display_name || selected[index]?.name).filter(Boolean));
-          setState("stored");
-          setSessionMessage("Files are stored in your private source session. OCR and live analysis are not connected yet; no dashboard result was created.");
-          return;
-        }
-        const results = await Promise.all(selected.map((file) => uploadSource(session, file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook", file)));
+        const results = await Promise.all(selected.map((file) => {
+          const role = file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook";
+          return uploadAuthenticatedSource(auth, session, role, file);
+        }));
         setFiles(results.map((item, index) => item?.display_name || item?.file?.display_name || selected[index]?.name).filter(Boolean));
         setSessionMessage("Files passed validation. Building the source-cited analysis…");
-        const analysis = await analyzeSourceSession(session);
+        const analysis = await analyzeAuthenticatedSourceSession(auth, session);
         onAnalysisReady?.(analysis);
         setState("ready");
         setSessionMessage("Source-cited analysis ready. Open the company workspace to review it.");
       } catch (error) {
+        setSession(null);
         setState("error");
-        setSessionMessage(error instanceof Error ? error.message : "The files could not be checked safely.");
+        setSessionMessage(`${error instanceof Error ? error.message : "The files could not be checked safely."} Start a new private session to retry.`);
       }
       return;
     }
@@ -320,29 +313,33 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
     setSessionMessage("A live file session is required before local files can be uploaded or analyzed.");
   };
   const startPrivateSession = async () => {
+    if (!auth?.config?.configured) {
+      setState("error");
+      setSessionMessage("Authenticated private upload is not configured in this deployment. The demo data remains unchanged.");
+      return;
+    }
+    if (authState?.status !== "authenticated") {
+      setSessionMessage("Sign in with Google before starting an owner-scoped private upload.");
+      onNavigate("/sign-in");
+      return;
+    }
     setState("connecting");
-    setSessionMessage(privateStorage ? "Checking your signed-in account and starting a private source session…" : "Starting a temporary private session…");
+    setSessionMessage("Starting a private session…");
     try {
-      if (privateStorage && authState?.status !== "authenticated") {
-        setState("error");
-        setSessionMessage("Sign in with Google before uploading private source files.");
-        onNavigate?.("/sign-in");
-        return;
-      }
-      const next = privateStorage ? await privateStorage.createSession() : await createSourceSession();
+      const next = await createAuthenticatedSourceSession(auth);
       setSession(next);
       setState("empty");
       setFiles([]);
-      setSessionMessage(privateStorage ? "Private source session ready. Files are owner-scoped and expire after the configured session window." : "Temporary session ready. Files expire after 30 minutes idle or two hours absolute in this running process.");
+      setSessionMessage("Authenticated private session ready. Files and cited evidence are owner-scoped and expire after 30 minutes idle or two hours absolute.");
     } catch (error) {
       setState("error");
       setSessionMessage(error instanceof Error ? error.message : "A private session is not available in this deployment.");
     }
   };
   const liveRole = state === "error" ? "alert" : "status";
-  const heading = state === "ready" ? "Live analysis complete." : state === "stored" ? "Files stored. Analysis is not connected yet." : state === "sample" ? "Sample sources loaded." : state === "error" ? "The source set needs attention." : state === "connecting" ? "Connecting the live file service." : state === "server-loading" ? (privateSession ? "Storing files in the private source library." : "Validating and analyzing uploaded files.") : session ? "Choose the report and workbook." : "Connect the live file service.";
-  const detail = sessionMessage || (state === "error" ? "The previous dashboard remains unchanged. Correct the issue and try again." : state === "sample" ? "Sample data is clearly labelled and does not represent an uploaded analysis." : state === "stored" ? "Your files are private and owner-scoped. OCR and live analysis are not connected yet." : session ? (privateSession ? "Choose one PDF financial report and one XLSX evidence workbook; storage starts only after your signed-in owner is verified." : "Choose one PDF financial report and one XLSX evidence workbook; analysis starts only after both pass validation.") : "Connect a temporary live session to upload and analyze your own source set.");
-  const slotStatus = state === "error" ? "Needs attention" : state === "server-loading" ? "Checking" : state === "ready" ? "Analyzed" : state === "stored" ? "Stored" : state === "sample" ? "Sample" : "Waiting";
+  const heading = state === "ready" ? "Live analysis complete." : state === "sample" ? "Sample sources loaded." : state === "error" ? "The source set needs attention." : state === "connecting" ? "Connecting the live file service." : state === "server-loading" ? "Validating and analyzing uploaded files." : session ? "Choose the report and workbook." : "Connect the live file service.";
+  const detail = sessionMessage || (state === "error" ? "The previous dashboard remains unchanged. Correct the issue and try again." : state === "sample" ? "Sample data is clearly labelled and does not represent an uploaded analysis." : session ? "Choose one PDF financial report and one XLSX evidence workbook; analysis starts only after both pass validation." : "Connect an authenticated live session to upload and analyze your own source set.");
+  const slotStatus = state === "error" ? "Needs attention" : state === "server-loading" ? "Checking" : state === "ready" ? "Analyzed" : state === "sample" ? "Sample" : "Waiting";
   return (
     <div className="route-page files-sources-page">
       <PageHeader eyebrow="Files & Sources" title="Upload, validate, analyze, then inspect every source." description="One source set feeds the dashboard, report, and Review Desk." actions={<StatusTag tone={session ? "success" : "neutral"}>{session ? "Live file session" : state === "sample" ? "Sample data" : "Live upload"}</StatusTag>} />
@@ -354,15 +351,15 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
           <p>{detail}</p>
         </div>
         <input ref={inputRef} className="visually-hidden" tabIndex="-1" aria-label="Select financial report PDF and evidence workbook" type="file" multiple accept=".pdf,.xlsx" onChange={(event) => choose([...event.target.files])} />
-        {state === "server-loading" && <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>{privateSession ? "Register → store → await processing" : "Upload → validate → analyze"}</strong><small>{privateSession ? "The private adapter stores bytes and metadata only. No OCR or dashboard analysis is being claimed." : "The dashboard and report update only after the server returns a complete source-cited analysis."}</small></div>}
+        {state === "server-loading" && <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>Upload → validate → analyze</strong><small>The dashboard and report update only after the server returns a complete source-cited analysis.</small></div>}
         <div className="file-slot-grid" aria-label="Required review files">
           {[{ role: "report_pdf", label: "Financial report", kind: "PDF", name: files.find((name) => name.toLowerCase().endsWith(".pdf")) || expected.find((name) => name.toLowerCase().endsWith(".pdf")) }, { role: "workbook", label: "Evidence workbook", kind: "XLSX", name: files.find((name) => name.toLowerCase().endsWith(".xlsx")) || expected.find((name) => name.toLowerCase().endsWith(".xlsx")) }].map((slot) => <article className="file-slot" key={slot.role}><span className="file-kind">{slot.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{slot.kind}</span><div><h3>{slot.label}</h3><p>{slot.name || "No file selected"}</p></div><StatusTag tone={state === "ready" ? "success" : state === "error" ? "warning" : "neutral"}>{slotStatus}</StatusTag></article>)}
         </div>
         <div className="upload-actions">
-          <button className="button primary" type="button" disabled={state === "server-loading" || state === "connecting"} onClick={() => state === "ready" ? onNavigate("/") : state === "stored" ? onNavigate("/files#sources") : session ? inputRef.current?.click() : startPrivateSession()}>{state === "connecting" ? "Connecting…" : state === "server-loading" ? (privateSession ? "Storing files…" : "Analyzing uploaded files…") : state === "ready" ? "View updated dashboard" : state === "stored" ? "View source library" : session ? "Select files to analyze" : "Connect live file service"}</button>
+          <button className="button primary" type="button" disabled={state === "server-loading" || state === "connecting"} onClick={() => state === "ready" ? onNavigate("/") : session ? inputRef.current?.click() : startPrivateSession()}>{state === "connecting" ? "Connecting…" : state === "server-loading" ? "Analyzing uploaded files…" : state === "ready" ? "View updated dashboard" : session ? "Select files to analyze" : "Connect live file service"}</button>
           <button className="button secondary" type="button" disabled={state === "server-loading" || state === "connecting" || expected.length !== 2} onClick={() => { setSession(null); setSessionMessage(""); setFiles(expected); setState("sample"); onFixtureReady?.(); }}>Try sample data</button>
         </div>
-        <details className="privacy-details"><summary>{state === "sample" ? "About sample data" : "Privacy and retention"}</summary><p>{state === "sample" ? "The sample option restores MagicFin’s preloaded, human-checked dataset. It never reads or uploads files from your device and is not presented as a live analysis." : privateSession ? "Selected bytes are stored only in the private owner-scoped Supabase bucket through the authenticated adapter. This frontend does not run OCR or claim a completed analysis." : session ? "This temporary session uploads only the files you choose. It expires after 30 minutes idle or two hours absolute; deletion guarantees require a server receipt." : "The live service creates a temporary session before the file picker opens. Use it only for documents you are authorized to process."}</p></details>
+        <details className="privacy-details"><summary>{state === "sample" ? "About sample data" : "Privacy and retention"}</summary><p>{state === "sample" ? "The sample option restores MagicFin’s preloaded, human-checked dataset. It never reads or uploads files from your device and is not presented as a live analysis." : session ? "This owner-scoped session uploads only the files you choose. It expires after 30 minutes idle or two hours absolute; deletion guarantees require a server receipt." : "The live service creates an authenticated private session before the file picker opens. Use it only for documents you are authorized to process."}</p></details>
       </section>
       <section className="source-library-section" id="sources" tabIndex="-1" aria-labelledby="source-library-title">
         <div className="section-heading"><div><p className="eyebrow">2 · Sources</p><h2 id="source-library-title">Evidence with a visible address.</h2><p>Search each validated source by filename, period, provenance, or exact anchor.</p></div><StatusTag tone="success">{visibleSources.length} of {sources.length} sources</StatusTag></div>
@@ -441,7 +438,7 @@ function ReportsPage({ data, onNavigate }) {
       <section className="economic-context" aria-labelledby="economic-title"><div className="section-heading"><div><p className="eyebrow">Sourced economic context</p><h2 id="economic-title">Background indicators, not explanations.</h2></div></div><p className="context-caveat"><Info size={17} />Context only; no causal relationship is asserted.</p><div className="context-list">{data.economicContext.map((item) => <article key={item.label}><div><h3>{item.label}</h3><strong>{item.value}</strong></div><dl><div><dt>Geography</dt><dd>{item.geography}</dd></div><div><dt>Period / unit</dt><dd>{item.period} · {item.unit}</dd></div><div><dt>Source date</dt><dd>{item.source} · {item.sourceDate}</dd></div><div><dt>Comparability</dt><dd>{item.comparability}</dd></div></dl></article>)}</div></section>
       <section className="management-questions" aria-labelledby="management-questions-title"><p className="eyebrow">Board agenda</p><h2 id="management-questions-title">Questions for the next performance discussion.</h2><ol>{data.managementQuestions.map((question, index) => <li key={question}><span>{index + 1}</span><p>{question}</p></li>)}</ol><small>Questions are generated from the bounded analysis contract. They are not recommendations or financial advice.</small></section>
       <section className="report-methodology" aria-labelledby="methodology-title"><div><p className="eyebrow">Methodology & limitations</p><h2 id="methodology-title">A brief with a visible decision boundary.</h2><p>Reported values and ratios retain their periods, units, and source methods. Illustrative ranges use {data.forecast.method.toLowerCase()} and do not include acquisitions, currency remeasurement, or macroeconomic causality.</p></div><dl><div><dt>Coverage</dt><dd>{data.trend.length} reported periods; {data.metrics.length} primary metrics; {data.secondaryRatios.length} secondary ratios</dd></div><div><dt>Economic context</dt><dd>Contextual comparison only; not evidence of company-specific cause</dd></div><div><dt>Exports</dt><dd>{isDemo ? "Deterministic demo PDF and JSON" : "Validated service PDF and JSON"}</dd></div><div><dt>Limitations</dt><dd>No investment recommendation, assurance opinion, persistence claim, or live-model inference</dd></div></dl></section>
-      {message && <div className="toast" role="status"><CheckCircle size={20} /><span><strong>{message}</strong><small>Generated from the verified fixture.</small></span><button type="button" onClick={() => setMessage("")} aria-label="Dismiss notification"><X size={16} /></button></div>}
+      {message && <div className="toast" role="status"><CheckCircle size={20} /><span><strong>{message}</strong><small>{isDemo ? "Generated from the verified fixture." : "Generated from the current validated analysis."}</small></span><button type="button" onClick={() => setMessage("")} aria-label="Dismiss notification"><X size={16} /></button></div>}
     </div>
   );
 }
@@ -592,7 +589,7 @@ function DeletedSessionState({ onRestore }) {
   return <section className="route-state receipt" aria-live="polite" tabIndex="-1"><span className="state-icon success"><Check size={24} weight="bold" aria-hidden="true" /></span><p className="eyebrow supported-text">Deletion receipt</p><h1>Demo session cleared.</h1><p>The Company, Sources, History, Review Desk, and Reports fixture views are cleared for this browser session. No server data existed.</p><button autoFocus className="button primary" type="button" onClick={onRestore}>Restore verified fixture</button></section>;
 }
 
-function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData, authState, authReturnTo, onAuthSignIn, onAuthSignOut, privateStorage, assistant }) {
+function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData, auth, authState, authReturnTo, onAuthSignIn, onAuthSignOut, assistant }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [source, setSource] = useState(null);
   const [sessionCleared, setSessionCleared] = useState(false);
@@ -612,7 +609,7 @@ function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistan
   const pages = {
     "/": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} />,
     "/company": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} />,
-    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} authState={authState} privateStorage={privateStorage} onFixtureReady={() => { setAnalysisData(productData); setSessionCleared(false); }} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} />,
+    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => { setAnalysisData(productData); setSessionCleared(false); }} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} auth={auth} authState={authState} />,
     "/history": <HistoryPage data={data} onNavigate={onNavigate} />,
     "/review": <ReviewDesk onClearSession={() => setSessionCleared(true)} productData={data} />,
     "/reports": <ReportsPage data={data} onNavigate={onNavigate} />,
@@ -673,5 +670,5 @@ export function App({ initialRoute, initialAssistantOpen = false, initialAssista
     }, 0);
     return () => window.clearTimeout(timer);
   }, [route]);
-  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} authState={authState} authReturnTo={authReturnToRef.current} onAuthSignIn={() => authHandoff.auth.signInWithGoogle(authReturnToRef.current)} onAuthSignOut={() => authHandoff.auth.signOut()} privateStorage={authHandoff.privateStorage} assistant={authHandoff.assistant} />;
+  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} auth={authHandoff.auth} authState={authState} authReturnTo={authReturnToRef.current} onAuthSignIn={() => authHandoff.auth.signInWithGoogle(authReturnToRef.current)} onAuthSignOut={() => authHandoff.auth.signOut()} assistant={authHandoff.assistant} />;
 }

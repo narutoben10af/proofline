@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import math
+import os
+import subprocess
 from collections.abc import Callable, Iterable
 from itertools import islice
+from pathlib import Path
 
 from proofline.contracts import PdfSourceRef, SourceSpan
 from proofline.parsing.models import ExtractedPage, ExtractionMethod, ExtractionWarning
@@ -14,6 +17,59 @@ MAX_OCR_LINES = 500
 
 class OcrExtractionError(ValueError):
     pass
+
+
+class TesseractOcrEngine:
+    """Bounded adapter for an explicitly configured local Tesseract executable."""
+
+    def __init__(self, command: Path, timeout_seconds: float = 20.0) -> None:
+        self.command = command
+        self.timeout_seconds = timeout_seconds
+
+    def __call__(self, image: bytes) -> Iterable[OcrLine]:
+        try:
+            result = subprocess.run(  # noqa: S603
+                [str(self.command), "stdin", "stdout", "--psm", "6", "tsv"],
+                input=image,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=self.timeout_seconds,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise OcrExtractionError("configured OCR runtime is unavailable") from error
+        if result.returncode != 0 or len(result.stdout) > 2 * 1024 * 1024:
+            raise OcrExtractionError("configured OCR runtime failed safely")
+        lines: list[OcrLine] = []
+        for raw_line in result.stdout.decode("utf-8", errors="replace").splitlines()[1:]:
+            columns = raw_line.split("\t", 11)
+            if len(columns) != 12 or not columns[11].strip():
+                continue
+            try:
+                confidence = float(columns[10]) / 100
+            except ValueError:
+                continue
+            if confidence >= 0:
+                lines.append((columns[11], confidence))
+        return lines
+
+
+def configured_ocr_adapter(
+    command: Path | None,
+    *,
+    timeout_seconds: float = 20.0,
+    threshold: float = 0.7,
+) -> PaddleOcrCompatibleAdapter | None:
+    """Activate OCR only when an explicit absolute executable is genuinely available."""
+
+    if command is None or not command.is_absolute():
+        return None
+    resolved = command.resolve()
+    if not resolved.is_file() or not os.access(resolved, os.X_OK):
+        return None
+    return PaddleOcrCompatibleAdapter(
+        TesseractOcrEngine(resolved, timeout_seconds=timeout_seconds), threshold=threshold
+    )
 
 
 class PaddleOcrCompatibleAdapter:

@@ -6,10 +6,22 @@ from contextlib import asynccontextmanager, suppress
 from datetime import timedelta
 from pathlib import Path
 from typing import Annotated, Literal
+from uuid import UUID
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from proofline.config import Settings, get_settings
@@ -26,7 +38,17 @@ from proofline.contracts import (
     SourceSessionStatus,
 )
 from proofline.economic_context import get_company_lens
+from proofline.live_upload import (
+    AuthenticatedSessionCreated,
+    AuthenticatedSourceFile,
+    analyze_authenticated_session,
+    authenticated_adapters,
+    create_authenticated_session,
+    read_validated_upload,
+    register_validated_upload,
+)
 from proofline.mcp_server import build_mcp_server, mcp_http_gateway
+from proofline.parsing.ocr import configured_ocr_adapter
 from proofline.providers import GemmaProvider
 from proofline.providers.contracts import (
     AssistantRequest,
@@ -47,7 +69,14 @@ from proofline.reports import (
 )
 from proofline.service import analyze
 from proofline.sessions import SessionStore
-from proofline.source_library import LibraryError, SessionRecord, SourceLibraryStore, Tombstone
+from proofline.source_library import (
+    LibraryError,
+    ProcessSessionRepository,
+    SessionRecord,
+    SourceLibraryStore,
+    Tombstone,
+)
+from proofline.supabase_persistence import persistence_selection
 from proofline.upload_analysis import UploadAnalysisError, analyze_uploaded_evidence
 
 CAPABILITY_COOKIE = "__Host-proofline_capability"
@@ -68,7 +97,9 @@ class RequestSizeLimitMiddleware:
         self.max_bytes = max_bytes
 
     async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] != "http" or not scope.get("path", "").startswith("/api/sessions"):
+        if scope["type"] != "http" or not scope.get("path", "").startswith(
+            ("/api/sessions", "/api/authenticated/sessions")
+        ):
             await self.app(scope, receive, send)
             return
         headers = dict(scope.get("headers", ()))
@@ -109,7 +140,9 @@ class SessionNoStoreMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send) -> None:
-        if scope["type"] != "http" or not scope.get("path", "").startswith("/api/sessions"):
+        if scope["type"] != "http" or not scope.get("path", "").startswith(
+            ("/api/sessions", "/api/authenticated/sessions")
+        ):
             await self.app(scope, receive, send)
             return
 
@@ -137,9 +170,16 @@ async def lifespan(app: FastAPI):
         root=settings.source_library_root,
         idle_ttl=timedelta(minutes=settings.source_library_idle_minutes),
         absolute_ttl=timedelta(minutes=settings.source_library_absolute_minutes),
+        repository=ProcessSessionRepository(tombstone_ttl=timedelta(hours=2), max_tombstones=1_000),
     )
     source_store.startup_cleanup()
     app.state.source_store = source_store
+    app.state.persistence_selection = persistence_selection(settings)
+    app.state.ocr_adapter = configured_ocr_adapter(
+        settings.ocr_tesseract_command,
+        timeout_seconds=settings.ocr_timeout_seconds,
+        threshold=settings.ocr_confidence_threshold,
+    )
     stop_cleanup = asyncio.Event()
 
     async def periodic_cleanup() -> None:
@@ -177,6 +217,17 @@ app.add_middleware(
     max_bytes=get_settings().source_library_max_request_bytes,
 )
 app.add_middleware(SessionNoStoreMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        origin.strip()
+        for origin in get_settings().source_library_allowed_origins.split(",")
+        if origin.strip()
+    ],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Proofline-CSRF"],
+)
 session_store = SessionStore()
 
 
@@ -192,7 +243,7 @@ async def library_error_handler(_request: Request, error: LibraryError) -> JSONR
 async def request_validation_error_handler(
     request: Request, error: RequestValidationError
 ) -> JSONResponse:
-    if request.url.path.startswith("/api/sessions"):
+    if request.url.path.startswith(("/api/sessions", "/api/authenticated/sessions")):
         return JSONResponse(status_code=422, content={"reason_code": "REQUEST_INVALID"})
     return await request_validation_exception_handler(request, error)
 
@@ -207,6 +258,13 @@ def require_same_origin(request: Request) -> None:
     origin = request.headers.get("origin")
     fetch_site = request.headers.get("sec-fetch-site")
     if origin not in allowed or fetch_site not in {None, "same-origin"}:
+        raise LibraryError("ORIGIN_NOT_ALLOWED", 403)
+
+
+def require_authenticated_origin(request: Request) -> None:
+    settings = get_settings()
+    allowed = {item.strip() for item in settings.source_library_allowed_origins.split(",")}
+    if request.headers.get("origin") not in allowed:
         raise LibraryError("ORIGIN_NOT_ALLOWED", 403)
 
 
@@ -285,6 +343,94 @@ def public_demo(fixture_id: str) -> dict:
 
 def hmac_compare(left: str, right: str) -> bool:
     return hmac.compare_digest(left, right)
+
+
+@app.post(
+    "/api/authenticated/sessions",
+    response_model=AuthenticatedSessionCreated,
+    status_code=201,
+    tags=["authenticated-source-library"],
+)
+async def create_authenticated_source_session(
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+) -> AuthenticatedSessionCreated:
+    require_authenticated_origin(request)
+    _user, repository, _objects, _maintenance = await asyncio.to_thread(
+        authenticated_adapters, get_settings(), authorization
+    )
+    return await asyncio.to_thread(create_authenticated_session, repository)
+
+
+@app.post(
+    "/api/authenticated/sessions/{session_id}/files",
+    response_model=AuthenticatedSourceFile,
+    status_code=201,
+    tags=["authenticated-source-library"],
+)
+async def upload_authenticated_source_file(
+    request: Request,
+    session_id: str,
+    role: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    authorization: Annotated[str | None, Header()] = None,
+) -> AuthenticatedSourceFile:
+    require_authenticated_origin(request)
+    try:
+        parsed_session_id = UUID(session_id)
+    except ValueError as error:
+        raise LibraryError("SESSION_NOT_FOUND", 404) from error
+    user, repository, objects, maintenance = await asyncio.to_thread(
+        authenticated_adapters, get_settings(), authorization
+    )
+    display_name, canonical_type, content, warning = await read_validated_upload(
+        file,
+        role=role,
+        validator=source_store(request).validation,
+    )
+    return await asyncio.to_thread(
+        register_validated_upload,
+        user=user,
+        repository=repository,
+        objects=objects,
+        maintenance=maintenance,
+        session_id=parsed_session_id,
+        role=role,
+        display_name=display_name,
+        canonical_type=canonical_type,
+        content=content,
+        sanitization_warning=warning,
+    )
+
+
+@app.post(
+    "/api/authenticated/sessions/{session_id}/analysis",
+    response_model=AnalysisResponse,
+    tags=["authenticated-source-library", "analysis"],
+)
+async def analyze_authenticated_source_session(
+    request: Request,
+    session_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+) -> AnalysisResponse:
+    require_authenticated_origin(request)
+    try:
+        parsed_session_id = UUID(session_id)
+    except ValueError as error:
+        raise LibraryError("SESSION_NOT_FOUND", 404) from error
+    user, repository, objects, maintenance = await asyncio.to_thread(
+        authenticated_adapters, get_settings(), authorization
+    )
+    return await asyncio.to_thread(
+        analyze_authenticated_session,
+        user=user,
+        repository=repository,
+        objects=objects,
+        maintenance=maintenance,
+        validator=source_store(request).validation,
+        session_id=parsed_session_id,
+        ocr=request.app.state.ocr_adapter,
+    )
 
 
 @app.post(
@@ -424,6 +570,8 @@ def analyze_source_session(request: Request, session_id: str) -> AnalysisRespons
             pdf_file_id=pdf.metadata.file_id,
             workbook_file_id=workbook.metadata.file_id,
             retrieved_at=max(pdf.metadata.uploaded_at, workbook.metadata.uploaded_at),
+            pdf_display_name=pdf.metadata.display_name,
+            workbook_display_name=workbook.metadata.display_name,
             pdf_extraction_warnings=pdf_warnings,
         )
     except UploadAnalysisError as error:

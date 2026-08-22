@@ -17,14 +17,15 @@ pnpm run test:sites
 
 The production build is written to `dist/`; `build` also prepares the existing Sites worker package.
 
-## Verified fixture boundaries
+## Live and fixture boundaries
 
 - `src/product-contract.js` is the replaceable product/session/assistant/report adapter boundary.
 - `src/mock-contract.js` remains the normalized Review Desk finding contract.
-- Files & Upload checks only the filenames `Annual_Report_2025.pdf` and `Financials_FY2025.xlsx`, or loads the same verified fixture without files. It never reads, uploads, parses, or retains selected bytes.
+- When Supabase Auth and `VITE_API_BASE_URL` are configured, Files & Upload requires a verified user session and sends the selected PDF/XLSX to the authenticated server pipeline. The returned cited analysis replaces the dashboard, source, Review Desk, and report data; a failed real upload never falls back to the fixture.
+- Without that configuration, the local process-only review boundary remains available for development. “Try sample data” is an explicit separate action and never reads selected bytes.
 - The assistant is a provider-neutral scripted fixture. Free-form answers are disabled until a server-side provider is configured; no API key belongs in the browser bundle.
 - The reviewed JSON export works locally. PDF export exposes loading/error/ready adapter states but defaults to not configured; it never prints the live DOM as a substitute.
-- History is explicitly static demo activity. Profile, sign-in, persistence, and cloud storage remain unavailable rather than imitated.
+- History remains explicitly static demo activity. Sign-in and persistence describe their actual configured state rather than imitating success.
 
 ## Interaction and accessibility coverage
 

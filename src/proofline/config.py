@@ -1,8 +1,9 @@
 import tempfile
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +28,14 @@ class Settings(BaseSettings):
         "https://testserver,http://127.0.0.1:8000,http://localhost:8000,"
         "http://127.0.0.1:4173,http://localhost:4173"
     )
+    source_library_persistence_backend: Literal["process-local", "supabase"] = "process-local"
+    supabase_url: str | None = None
+    supabase_publishable_key: SecretStr | None = None
+    supabase_secret_key: SecretStr | None = None
+    supabase_storage_bucket: str = "proofline-source-library"
+    ocr_tesseract_command: Path | None = None
+    ocr_timeout_seconds: float = Field(default=20.0, ge=1, le=60)
+    ocr_confidence_threshold: float = Field(default=0.7, ge=0, le=1)
 
 
 @lru_cache

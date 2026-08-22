@@ -50,9 +50,9 @@ const CHART_RESPONSE_SCHEMA = {
             maxItems: 12,
             items: {
               type: "string",
-              pattern: "^file-[A-Za-z0-9_-]{24}$",
+              pattern: "^(?:file-[A-Za-z0-9_-]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
               minLength: 29,
-              maxLength: 29,
+              maxLength: 36,
             },
           },
         },
@@ -64,9 +64,9 @@ const CHART_RESPONSE_SCHEMA = {
       maxItems: 12,
       items: {
         type: "string",
-        pattern: "^file-[A-Za-z0-9_-]{24}$",
+        pattern: "^(?:file-[A-Za-z0-9_-]{24}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$",
         minLength: 29,
-        maxLength: 29,
+        maxLength: 36,
       },
     },
   },
