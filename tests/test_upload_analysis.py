@@ -6,9 +6,11 @@ from io import BytesIO
 import fitz
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import RectangleObject
 
 from proofline.api import app
-from proofline.source_library import PDF_MIME, XLSX_MIME
+from proofline.source_library import PDF_MIME, PDF_SANITIZER_WARNING, XLSX_MIME
 
 ORIGIN_HEADERS = {"Origin": "https://testserver", "Sec-Fetch-Site": "same-origin"}
 
@@ -20,6 +22,22 @@ def _pdf(text: str) -> bytes:
     content = document.tobytes()
     document.close()
     return content
+
+
+def _interactive_pdf(text: str) -> bytes:
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((48, 48), text, fontsize=11)
+    base = document.tobytes()
+    document.close()
+    writer = PdfWriter()
+    writer.append_pages_from_reader(PdfReader(BytesIO(base)))
+    writer.add_uri(0, "https://example.invalid/removed", RectangleObject((48, 80, 220, 100)))
+    writer.add_js("app.alert('removed')")
+    writer.add_attachment("removed.txt", b"removed")
+    output = BytesIO()
+    writer.write(output)
+    return output.getvalue()
 
 
 def _xlsx(rows: list[list[object]], title: str) -> bytes:
@@ -206,3 +224,31 @@ def test_unsupported_or_ambiguous_upload_fails_closed_without_fixture_fallback()
 
     assert result.status_code == 422
     assert result.json() == {"reason_code": "WORKBOOK_MAPPING_REQUIRED"}
+
+
+def test_static_derivative_warning_forces_uncertain_analysis() -> None:
+    workbook = _xlsx(
+        [
+            ["Issuer", "Alpine Robotics SE"],
+            ["Entity scope", "Alpine Robotics SE consolidated"],
+            ["Currency", "EUR"],
+            ["Units", "thousands"],
+            ["Restatement basis", "not restated"],
+            ["Line item", 2025, 2026],
+            ["Revenue", 1_000, 1_200],
+        ],
+        "Consolidated statement",
+    )
+    report = _interactive_pdf(
+        "Issuer: Alpine Robotics SE\n"
+        "Financial report. Consolidated statements. Amounts in EUR thousands.\n"
+        "Revenue grew 20% for 2026."
+    )
+
+    with TestClient(app, base_url="https://testserver") as client:
+        analysis = _analyze(client, report, workbook)
+
+    assert {finding["classification"] for finding in analysis["findings"]} == {"uncertain"}
+    assert all(
+        PDF_SANITIZER_WARNING in claim["extraction_warnings"] for claim in analysis["claims"]
+    )

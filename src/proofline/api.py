@@ -415,8 +415,7 @@ def analyze_source_session(request: Request, session_id: str) -> AnalysisRespons
         raise LibraryError("REQUIRED_FILES_NOT_READY", 409)
     pdf = source_store(request).get_file(record, pdf_metadata.file_id)
     workbook = source_store(request).get_file(record, workbook_metadata.file_id)
-    sanitization = getattr(pdf, "sanitization", None)
-    pdf_warnings = (sanitization.warning,) if sanitization is not None else ()
+    pdf_warnings = (pdf.sanitization.warning,) if pdf.sanitization is not None else ()
     try:
         return analyze_uploaded_evidence(
             pdf_content=pdf.path.read_bytes(),

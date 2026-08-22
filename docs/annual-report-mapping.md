@@ -31,9 +31,9 @@ committed.
 
 | Unchanged PDF | Result | Reason |
 | --- | --- | --- |
-| `pcg_fy2025_financial_report.pdf` | Three dynamic findings | Revenue growth, operating margin, and current ratio were corroborated on one selected statement page. Every claim resolved to a PDF page span. FCF margin remained omitted because its numerator and denominator are split across different report pages and the current claim contract has one primary PDF span. |
-| `maybank_fy2025_financial_statements.pdf` | Fail closed | The workbook normalized source-backed rows, then the generic bank-style applicability gate rejected operating-company Tier-0 metrics. |
-| `cimb_group_fy2025_financial_statements.pdf` | Fail closed | The source uses bank-specific `Net income` rather than a safe generic revenue concept. Workbook normalization therefore refused to invent a Tier-0 revenue mapping. |
+| `pcg_fy2025_financial_report.pdf` | Three dynamic, uncertain findings | Safe admission rebuilt the interactive report as a static page-only derivative. Revenue growth, operating margin, and current ratio were corroborated on one selected statement page, every claim resolved to a PDF span, and the sanitizer warning correctly forced `uncertain`. FCF margin remained omitted because its numerator and denominator are split across different report pages and the current claim contract has one primary PDF span. |
+| `maybank_fy2025_financial_statements.pdf` | Fail closed | Safe admission accepted the unchanged report. The workbook normalized source-backed rows, then the generic bank-style applicability gate rejected operating-company Tier-0 metrics. |
+| `cimb_group_fy2025_financial_statements.pdf` | Fail closed | Safe admission accepted the unchanged report. The source uses bank-specific `Net income` rather than a safe generic revenue concept, so workbook normalization refused to invent a Tier-0 revenue mapping. |
 
 These are interoperability outcomes, not issuer fixtures or expected-value fallbacks. The same mapper
 and thresholds were used for all three files.
