@@ -122,11 +122,10 @@ export const productFixture = {
 };
 
 export const runMagicStages = [
-  "Validate sources",
-  "Extract claims",
-  "Calculate metrics",
-  "Link evidence",
-  "Flag discrepancies",
+  "Extract reported figures",
+  "Calculate performance metrics",
+  "Compare narrative with numbers",
+  "Update dashboard and report",
 ];
 
 const metricPresentation = {

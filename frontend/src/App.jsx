@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ArrowRight, ArrowsIn, ArrowsOut, Books, CaretDown, CaretLeft, CaretRight, Check, CheckCircle,
   ClockCounterClockwise, DownloadSimple, FileArrowUp, FilePdf, Files, Gear,
@@ -6,7 +7,7 @@ import {
   SignIn, Sparkle, Table, UserCircle, Warning, X,
 } from "@phosphor-icons/react";
 import { ReviewDesk, downloadReviewedReport } from "./ReviewDesk";
-import { adaptProductContract, buildDeterministicDemoPdf, getAssistantAdapter, getAssistantChartSpecs, getProviderConnectionAdapter, getReviewedReportBundle, metricDefinitionRegistry, productFixture, requestReviewedPdf, runMagicStages } from "./product-contract";
+import { adaptProductContract, buildDeterministicDemoPdf, getAssistantAdapter, getAssistantChartSpecs, getProviderConnectionAdapter, getReviewedReportBundle, metricDefinitionRegistry, productFixture, requestReviewedPdf } from "./product-contract";
 import { analyzeSourceSession, createSourceSession, uploadSource } from "./session-api";
 
 const TrendChart = lazy(() => import("./TrendChart"));
@@ -127,10 +128,39 @@ function MetricDefinitionButton({ metricId, source }) {
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
   const titleId = `metric-definition-${metricId}`;
+  const dialogId = `${titleId}-dialog`;
   const definition = metricDefinitionRegistry[metricId];
   useDismissible(open, () => setOpen(false), triggerRef, panelRef);
+  useEffect(() => {
+    if (!open) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const previousPaddingRight = document.body.style.paddingRight;
+    const scrollbarWidth = Math.max(0, window.innerWidth - document.documentElement.clientWidth);
+    document.body.style.overflow = "hidden";
+    if (scrollbarWidth) document.body.style.paddingRight = `${scrollbarWidth}px`;
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.paddingRight = previousPaddingRight;
+    };
+  }, [open]);
   if (!definition) return null;
-  return <><button ref={triggerRef} className="metric-info-button" type="button" aria-haspopup="dialog" aria-controls={open ? titleId : undefined} aria-label={`Define ${definition.name}`} aria-expanded={open} onClick={() => setOpen(true)}><Info size={14} weight="bold" aria-hidden="true" /></button>{open && <div className="metric-definition-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}><section ref={panelRef} className="metric-definition-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex="-1"><div className="panel-title"><div><p className="eyebrow">Metric definition</p><h2 id={titleId}>{definition.name}</h2></div><button type="button" onClick={() => setOpen(false)} aria-label={`Close ${definition.name} definition`}><X size={19} /></button></div><p>{definition.definition}</p><dl><div><dt>Formula</dt><dd>{definition.formula}</dd></div><div><dt>Unit</dt><dd>{definition.unit}</dd></div><div><dt>How to read it</dt><dd>{definition.interpretation}</dd></div><div><dt>Caveat</dt><dd>{definition.caveat}</dd></div><div><dt>Current source / method</dt><dd>{source}</dd></div></dl><a className="inline-link" href="/files#sources">Open source or method <ArrowRight size={14} /></a></section></div>}</>;
+  const dialog = open && createPortal(
+    <div className="metric-definition-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
+      <section id={dialogId} ref={panelRef} className="metric-definition-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex="-1">
+        <div className="panel-title metric-definition-header">
+          <div><p className="eyebrow">Metric definition</p><h2 id={titleId}>{definition.name}</h2></div>
+          <button type="button" onClick={() => setOpen(false)} aria-label={`Close ${definition.name} definition`}><X size={19} /></button>
+        </div>
+        <div className="metric-definition-body">
+          <p>{definition.definition}</p>
+          <dl><div><dt>Formula</dt><dd>{definition.formula}</dd></div><div><dt>Unit</dt><dd>{definition.unit}</dd></div><div><dt>How to read it</dt><dd>{definition.interpretation}</dd></div><div><dt>Caveat</dt><dd>{definition.caveat}</dd></div><div><dt>Current source / method</dt><dd>{source}</dd></div></dl>
+          <a className="inline-link" href="/files#sources">Open source or method <ArrowRight size={14} /></a>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+  return <><button ref={triggerRef} className="metric-info-button" type="button" aria-haspopup="dialog" aria-controls={open ? dialogId : undefined} aria-label={`Define ${definition.name}`} aria-expanded={open} onClick={() => setOpen(true)}><Info size={14} weight="bold" aria-hidden="true" /></button>{dialog}</>;
 }
 
 function Sidebar({ route, onNavigate, onOpenAssistant, assistantButtonRef, mobileOpen, onCloseMobile, panelRef, backgroundInert }) {
@@ -207,30 +237,19 @@ function DashboardSignals({ data }) {
 
 function HeadlineMetrics({ metrics, context = "review" }) {
   const title = context === "brief" ? "Four primary measures of reported performance." : "The four numbers to orient the review.";
-  return <section className="headline-metrics" aria-labelledby="headline-metrics-title"><div className="section-heading"><div><p className="eyebrow">Primary metrics</p><h2 id="headline-metrics-title">{title}</h2></div><small>{metrics[0]?.period} · reported period</small></div><div className="metric-grid">{metrics.map((metric, index) => <article className="metric-card" key={metric.id} style={{ "--reveal-order": index }}><div><span className="metric-label">{metric.label}<MetricDefinitionButton metricId={metric.id} source={metric.source} /></span><StatusTag tone={metric.tone === "caution" ? "warning" : "success"}>{metric.period}</StatusTag></div><strong>{metric.value}</strong><p className={metric.tone === "caution" ? "metric-delta caution" : "metric-delta"}>{metric.delta} <small>{metric.deltaLabel}</small></p><dl><div><dt>Unit</dt><dd>{metric.unit}</dd></div><div><dt>Source</dt><dd>{metric.source}</dd></div></dl></article>)}</div></section>;
+  const meanings = {
+    revenue: "Growth shows whether sales are expanding compared with the prior year.",
+    "operating-margin": "Profitability shows how much operating profit remains from each dollar of revenue.",
+    "current-ratio": "Liquidity indicates the ability to cover near-term obligations with current assets.",
+    "fcf-margin": "Cash flow shows how much revenue becomes free cash after operations and capital spending.",
+  };
+  return <section className="headline-metrics" aria-labelledby="headline-metrics-title"><div className="section-heading"><div><p className="eyebrow">Primary metrics</p><h2 id="headline-metrics-title">{title}</h2></div><small>{metrics[0]?.period} · reported period</small></div><div className="metric-grid">{metrics.map((metric, index) => <article className="metric-card" key={metric.id} style={{ "--reveal-order": index }}><div><span className="metric-label">{metric.label}<MetricDefinitionButton metricId={metric.id} source={metric.source} /></span><StatusTag tone={metric.tone === "caution" ? "warning" : "success"}>{metric.period}</StatusTag></div><strong>{metric.value}</strong><p className={metric.tone === "caution" ? "metric-delta caution" : "metric-delta"}>{metric.delta} <small>{metric.deltaLabel}</small></p><p className="metric-meaning">{meanings[metric.id] || metricDefinitionRegistry[metric.id]?.interpretation}</p><dl><div><dt>Unit</dt><dd>{metric.unit}</dd></div><div><dt>Source</dt><dd>{metric.source}</dd></div></dl></article>)}</div></section>;
 }
 
-function RunMagicProgress({ stage, complete }) {
-  return <section className={`magic-progress ${complete ? "complete" : ""}`} aria-busy={!complete}><div className="magic-progress-head" aria-live="polite"><span className="magic-orbit" aria-hidden="true"><Sparkle size={17} weight="fill" /></span><div><strong>{complete ? "Evidence trail ready" : "Running deterministic checks"}</strong><small>{complete ? "One discrepancy needs human review." : runMagicStages[stage]}</small></div></div><ol aria-label="Deterministic review stages">{runMagicStages.map((item, index) => <li key={item} className={index < stage || complete ? "done" : index === stage ? "active" : ""}>{index < stage || complete ? <Check size={14} weight="bold" /> : <span>{index + 1}</span>}{item}</li>)}</ol></section>;
-}
-
-function CompanyPage({ data, onNavigate, onOpenAssistant, onOpenSource, reducedMotion }) {
-  const [runState, setRunState] = useState("idle");
-  const [stage, setStage] = useState(0);
-  useEffect(() => {
-    if (runState !== "running") return undefined;
-    const reduced = reducedMotion || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const timer = window.setInterval(() => setStage((current) => {
-      if (current >= runMagicStages.length - 1) { window.clearInterval(timer); setRunState("complete"); return current; }
-      return current + 1;
-    }), reduced ? 25 : 420);
-    return () => window.clearInterval(timer);
-  }, [runState, reducedMotion]);
-  const startMagic = () => { setStage(0); setRunState("running"); };
+function CompanyPage({ data, onNavigate, onOpenAssistant, onOpenSource }) {
   return (
     <div className="route-page company-page">
-      <PageHeader eyebrow="Home · Company dashboard" title={data.company.name} description={`${data.company.description} · ${data.session.period}`} actions={<><button className="button secondary" type="button" onClick={() => onNavigate("/files")}><FileArrowUp size={17} />Files & Sources</button><button className="button secondary" type="button" onClick={() => onNavigate("/reports")}><Receipt size={17} />Deep analysis</button><button className="button magic" type="button" onClick={startMagic} disabled={runState === "running"}><Sparkle size={17} weight="fill" />{runState === "running" ? "Running five checks…" : "Run Magic"}</button></>}><small className="page-disclosure">{data.session.persistence} · last updated {data.session.lastUpdated}</small></PageHeader>
-      {runState !== "idle" && <RunMagicProgress stage={stage} complete={runState === "complete"} />}
+      <PageHeader eyebrow="Home · Company dashboard" title={data.company.name} description={`${data.company.description} · ${data.session.period}`} actions={<><button className="button secondary" type="button" onClick={() => onNavigate("/files#sources")}><Files size={17} />View sources</button><button className="button secondary" type="button" onClick={() => onNavigate("/reports")}><Receipt size={17} />Open report</button><button className="button magic" type="button" onClick={() => onNavigate("/files#upload")}><FileArrowUp size={17} />Analyze files</button></>}><small className="page-disclosure">{data.session.persistence} · last updated {data.session.lastUpdated}</small></PageHeader>
       <HeadlineMetrics metrics={data.metrics} />
       <TrendFigure data={data} onNavigate={onNavigate} />
       <DashboardSignals data={data} />
@@ -240,37 +259,21 @@ function CompanyPage({ data, onNavigate, onOpenAssistant, onOpenSource, reducedM
   );
 }
 
-function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady, reducedMotion }) {
+function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady }) {
   const inputRef = useRef(null);
   const [state, setState] = useState("empty");
   const [files, setFiles] = useState([]);
-  const [stage, setStage] = useState(0);
   const [session, setSession] = useState(null);
   const [sessionMessage, setSessionMessage] = useState("");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  useEffect(() => {
-    if (state !== "loading") return undefined;
-    const timer = window.setInterval(() => setStage((value) => {
-      if (value >= runMagicStages.length - 1) {
-        window.clearInterval(timer);
-        setState("ready");
-        onFixtureReady?.();
-        return value;
-      }
-      return value + 1;
-    }), reducedMotion || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? 25 : 240);
-    return () => window.clearInterval(timer);
-  }, [state, reducedMotion]);
   const sources = Array.isArray(data?.sources) ? data.sources : [];
   const query = search.trim().toLowerCase();
   const visibleSources = sources.filter((source) => (filter === "all" || (filter === "ready" ? source.status === "Validated" : source.status !== "Validated")) && (!query || `${source.name} ${source.kind} ${source.date} ${source.provenance} ${source.anchor}`.toLowerCase().includes(query)));
   const expected = [sources[0]?.name, sources[1]?.name].filter(Boolean);
-  const expectedCopy = expected.length === 2 ? `${expected[0]} and ${expected[1]}` : "the configured report PDF and workbook";
   const choose = async (selected) => {
     const names = selected.map((file) => file.name);
     setFiles(names);
-    setStage(0);
     if (session) {
       if (selected.length !== 2 || !selected.some((file) => file.name.toLowerCase().endsWith(".pdf")) || !selected.some((file) => file.name.toLowerCase().endsWith(".xlsx"))) {
         setState("error");
@@ -293,9 +296,11 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
       }
       return;
     }
-    setState(expected.length === 2 && selected.length === 2 && expected.every((name) => names.includes(name)) ? "loading" : "error");
+    setState("error");
+    setSessionMessage("A live file session is required before local files can be uploaded or analyzed.");
   };
   const startPrivateSession = async () => {
+    setState("connecting");
     setSessionMessage("Starting a temporary private session…");
     try {
       const next = await createSourceSession();
@@ -304,41 +309,40 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
       setFiles([]);
       setSessionMessage("Temporary session ready. Files expire after 30 minutes idle or two hours absolute in this running process.");
     } catch (error) {
+      setState("error");
       setSessionMessage(error instanceof Error ? error.message : "A private session is not available in this deployment.");
     }
   };
   const liveRole = state === "error" ? "alert" : "status";
-  const heading = state === "ready" ? "Sources are ready." : state === "error" ? "The source set needs attention." : state === "loading" || state === "server-loading" ? session ? "Uploading, checking, and analyzing sources." : "Following the fixture evidence trail." : session ? "Add the two required files." : "Try the verified fixture.";
-  const detail = sessionMessage || (state === "error" ? `The filenames did not match ${expectedCopy}. Nothing was uploaded, read, or retained.` : session ? "Choose one PDF financial report and one XLSX evidence workbook." : `The demo only checks the filenames ${expectedCopy}; it does not read or upload their contents.`);
-  const slotStatus = state === "error" ? "Needs attention" : state === "loading" || state === "server-loading" ? "Checking" : state === "ready" ? "Ready" : "Waiting";
+  const heading = state === "ready" ? "Live analysis complete." : state === "sample" ? "Sample sources loaded." : state === "error" ? "The source set needs attention." : state === "connecting" ? "Connecting the live file service." : state === "server-loading" ? "Validating and analyzing uploaded files." : session ? "Choose the report and workbook." : "Connect the live file service.";
+  const detail = sessionMessage || (state === "error" ? "The previous dashboard remains unchanged. Correct the issue and try again." : state === "sample" ? "Sample data is clearly labelled and does not represent an uploaded analysis." : session ? "Choose one PDF financial report and one XLSX evidence workbook; analysis starts only after both pass validation." : "Connect a temporary live session to upload and analyze your own source set.");
+  const slotStatus = state === "error" ? "Needs attention" : state === "server-loading" ? "Checking" : state === "ready" ? "Analyzed" : state === "sample" ? "Sample" : "Waiting";
   return (
     <div className="route-page files-sources-page">
-      <PageHeader eyebrow="Files & Sources" title="Bring the report and the numbers together." description="Start with the verified fixture or open a temporary private session when the source service is available." actions={<StatusTag tone={session ? "success" : "neutral"}>{session ? "Private session" : "Public fixture"}</StatusTag>} />
-      <section className="upload-panel" aria-labelledby="files-review-title">
+      <PageHeader eyebrow="Files & Sources" title="Upload, validate, analyze, then inspect every source." description="One source set feeds the dashboard, report, and Review Desk." actions={<StatusTag tone={session ? "success" : "neutral"}>{session ? "Live file session" : state === "sample" ? "Sample data" : "Live upload"}</StatusTag>} />
+      <section className="upload-panel" id="upload" tabIndex="-1" aria-labelledby="files-review-title">
         <div className="upload-icon"><Files size={28} /></div>
         <div role={liveRole} aria-live={state === "error" ? "assertive" : "polite"}>
-          <p className="eyebrow">Files in this review</p>
+          <p className="eyebrow">1 · Upload & analyze</p>
           <h2 id="files-review-title">{heading}</h2>
           <p>{detail}</p>
         </div>
-        <input ref={inputRef} className="visually-hidden" tabIndex="-1" aria-label={session ? "Select financial report PDF and evidence workbook" : "Select the two named demo files"} type="file" multiple accept=".pdf,.xlsx" onChange={(event) => choose([...event.target.files])} />
-        {(state === "loading" || state === "server-loading") && (session ? <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>Uploading · Checking · Analyzing</strong><small>Ready only after the server accepts both files and returns a source-cited analysis.</small></div> : <RunMagicProgress stage={stage} complete={false} />)}
+        <input ref={inputRef} className="visually-hidden" tabIndex="-1" aria-label="Select financial report PDF and evidence workbook" type="file" multiple accept=".pdf,.xlsx" onChange={(event) => choose([...event.target.files])} />
+        {state === "server-loading" && <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>Upload → validate → analyze</strong><small>The dashboard and report update only after the server returns a complete source-cited analysis.</small></div>}
         <div className="file-slot-grid" aria-label="Required review files">
-          {[{ role: "report_pdf", label: "Financial report", kind: "PDF", name: files.find((name) => name.toLowerCase().endsWith(".pdf")) || expected.find((name) => name.toLowerCase().endsWith(".pdf")) }, { role: "workbook", label: "Evidence workbook", kind: "XLSX", name: files.find((name) => name.toLowerCase().endsWith(".xlsx")) || expected.find((name) => name.toLowerCase().endsWith(".xlsx")) }].map((slot) => <article className="file-slot" key={slot.role}><span className="file-kind">{slot.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{slot.kind}</span><div><h3>{slot.label}</h3><p>{slot.name || "No file selected"}</p></div><StatusTag tone={state === "ready" ? "success" : state === "error" ? "warning" : "neutral"}>{slotStatus}</StatusTag>{files.length > 0 && state !== "loading" && <button className="inline-link" type="button" onClick={() => { setFiles((current) => current.filter((name) => name !== slot.name)); setState("empty"); }}>Remove</button>}</article>)}
+          {[{ role: "report_pdf", label: "Financial report", kind: "PDF", name: files.find((name) => name.toLowerCase().endsWith(".pdf")) || expected.find((name) => name.toLowerCase().endsWith(".pdf")) }, { role: "workbook", label: "Evidence workbook", kind: "XLSX", name: files.find((name) => name.toLowerCase().endsWith(".xlsx")) || expected.find((name) => name.toLowerCase().endsWith(".xlsx")) }].map((slot) => <article className="file-slot" key={slot.role}><span className="file-kind">{slot.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{slot.kind}</span><div><h3>{slot.label}</h3><p>{slot.name || "No file selected"}</p></div><StatusTag tone={state === "ready" ? "success" : state === "error" ? "warning" : "neutral"}>{slotStatus}</StatusTag></article>)}
         </div>
         <div className="upload-actions">
-          <button className="button primary" type="button" disabled={!session && expected.length !== 2} onClick={() => inputRef.current?.click()}>{state === "error" ? "Choose different files" : session ? "Add private-session files" : "Select named demo files"}</button>
-          <button className="button secondary" type="button" disabled={expected.length !== 2} onClick={() => { setSession(null); setSessionMessage(""); setFiles(expected); setState("loading"); setStage(0); }}>Use verified fixture without files</button>
-          {!session && <button className="button quiet" type="button" onClick={startPrivateSession}>Start private session</button>}
-          <button className="button magic" type="button" disabled={state !== "ready"} onClick={() => onNavigate("/company")}><Sparkle size={17} />Open company workspace</button>
+          <button className="button primary" type="button" disabled={state === "server-loading" || state === "connecting"} onClick={() => state === "ready" ? onNavigate("/") : session ? inputRef.current?.click() : startPrivateSession()}>{state === "connecting" ? "Connecting…" : state === "server-loading" ? "Analyzing uploaded files…" : state === "ready" ? "View updated dashboard" : session ? "Select files to analyze" : "Connect live file service"}</button>
+          <button className="button secondary" type="button" disabled={state === "server-loading" || state === "connecting" || expected.length !== 2} onClick={() => { setSession(null); setSessionMessage(""); setFiles(expected); setState("sample"); onFixtureReady?.(); }}>Try sample data</button>
         </div>
-        <div className="public-notice"><Info size={18} /><span><strong>{session ? "Temporary private session." : "Public demo boundary."}</strong>{session ? " Files expire after 30 minutes idle or two hours absolute. Deletion guarantees require the server receipt; backups and logs are excluded." : " No file contents are read or uploaded in the fixture path. Do not choose confidential documents."}</span></div>
+        <details className="privacy-details"><summary>{state === "sample" ? "About sample data" : "Privacy and retention"}</summary><p>{state === "sample" ? "The sample option restores MagicFin’s preloaded, human-checked dataset. It never reads or uploads files from your device and is not presented as a live analysis." : session ? "This temporary session uploads only the files you choose. It expires after 30 minutes idle or two hours absolute; deletion guarantees require a server receipt." : "The live service creates a temporary session before the file picker opens. Use it only for documents you are authorized to process."}</p></details>
       </section>
       <section className="source-library-section" id="sources" tabIndex="-1" aria-labelledby="source-library-title">
-        <div className="section-heading"><div><p className="eyebrow">Source Library</p><h2 id="source-library-title">Evidence with a visible address.</h2><p>Search status, period, provenance, and anchors from the current analysis contract.</p></div><StatusTag tone="success">{visibleSources.length} of {sources.length} sources</StatusTag></div>
+        <div className="section-heading"><div><p className="eyebrow">2 · Sources</p><h2 id="source-library-title">Evidence with a visible address.</h2><p>Search each validated source by filename, period, provenance, or exact anchor.</p></div><StatusTag tone="success">{visibleSources.length} of {sources.length} sources</StatusTag></div>
         <div className="source-tools"><label><span className="visually-hidden">Search sources</span><MagnifyingGlass size={17} aria-hidden="true" /><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search filename, period, anchor…" aria-label="Search sources" /></label><label className="select-control">Status<span className="select-shell"><select aria-label="Filter sources by status" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">All statuses</option><option value="ready">Validated</option><option value="attention">Needs attention</option></select><CaretDown size={15} weight="bold" aria-hidden="true" /></span></label></div>
         {visibleSources.length ? <div className="library-list">{visibleSources.map((source, index) => <article key={source.id} id={source.id} tabIndex="-1" style={{ "--reveal-order": index }}><span className="library-icon">{source.kind === "PDF" ? <FilePdf size={22} /> : <Table size={22} />}</span><div><h3>{source.name}</h3><p>{source.date} · {source.anchor}</p><small>{source.provenance}</small></div><StatusTag tone={source.status === "Validated" ? "success" : "warning"}>{source.status}</StatusTag><button className="button secondary" type="button" onClick={(event) => onOpenSource(source, event.currentTarget)}>Open evidence</button></article>)}</div> : <div className="source-empty" role="status"><MagnifyingGlass size={24} /><strong>No sources match this view.</strong><button className="inline-link" type="button" onClick={() => { setSearch(""); setFilter("all"); }}>Clear search and filter</button></div>}
-        <div className="fixture-note wide"><Info size={17} /><p><strong>Adapter boundary</strong>These cards consume stable source IDs from the current analysis contract; private-session mutations use the source-library adapter and never persist its CSRF capability.</p></div>
+        <p className="source-library-note">Citations across the dashboard, report, assistant, and Review Desk return to these exact source cards.</p>
       </section>
     </div>
   );
@@ -522,9 +526,9 @@ function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistan
   const openAssistant = (trigger) => { assistantReturnRef.current = trigger || document.activeElement; setMobileOpen(false); setAssistantOpen(true); };
   const restoreFixture = () => { setSessionCleared(false); onNavigate("/company"); };
   const pages = {
-    "/": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} reducedMotion={reducedMotion} />,
-    "/company": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} reducedMotion={reducedMotion} />,
-    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => setSessionCleared(false)} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} reducedMotion={reducedMotion} />,
+    "/": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} />,
+    "/company": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} />,
+    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => { setAnalysisData(productData); setSessionCleared(false); }} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} />,
     "/history": <HistoryPage data={data} onNavigate={onNavigate} />,
     "/review": <ReviewDesk onClearSession={() => setSessionCleared(true)} productData={data} />,
     "/reports": <ReportsPage data={data} onNavigate={onNavigate} />,

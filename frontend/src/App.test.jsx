@@ -4,9 +4,42 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { App, productFixture } from "./App";
 import { MAX_REVIEWED_REPORT_PDF_BYTES, requestReviewedPdf } from "./product-contract";
 
+const originalViewport = { width: window.innerWidth, height: window.innerHeight };
+
+const liveAnalysisResponse = {
+  output_status: "calculated",
+  metric_registry_version: "1.0.0",
+  documents: [
+    { id: "doc-report", issuer: "Meridian Live plc", version_label: "Meridian_Report_2026.pdf", reporting_basis: "IFRS", source_url: "Uploaded report" },
+    { id: "doc-workbook", issuer: "Meridian Live plc", version_label: "Meridian_Financials_2026.xlsx", reporting_basis: "IFRS", source_url: "Uploaded workbook" },
+  ],
+  source_spans: [
+    { id: "span-claim", document_version_id: "doc-report", source: { kind: "pdf", page: 14 } },
+    { id: "span-values", document_version_id: "doc-workbook", source: { kind: "spreadsheet", sheet: "Income Statement", cell: "B5:C8" } },
+  ],
+  observations: [
+    { id: "rev-2025", concept: "Revenue", numeric_value: 2900, display_value: "USD 2,900m", currency: "USD", period: { end: "FY2025" }, source_span_id: "span-values" },
+    { id: "rev-2026", concept: "Revenue", numeric_value: 3180, display_value: "USD 3,180m", currency: "USD", period: { end: "FY2026" }, source_span_id: "span-values" },
+    { id: "op-2026", concept: "Operating profit", numeric_value: 674, display_value: "USD 674m", currency: "USD", period: { end: "FY2026" }, source_span_id: "span-values" },
+    { id: "current-2026", concept: "Current assets", numeric_value: 1.55, display_value: "1.55", period: { end: "FY2026" }, source_span_id: "span-values" },
+    { id: "fcf-2026", concept: "Free cash flow", numeric_value: 14.2, display_value: "14.2%", period: { end: "FY2026" }, source_span_id: "span-values" },
+  ],
+  metric_results: [
+    { id: "result-growth", metric_id: "revenue_growth_yoy", result: 9.66, formula_id: "revenue-growth", input_observation_ids: ["rev-2025", "rev-2026"] },
+    { id: "result-margin", metric_id: "operating_margin", result: 21.2, formula_id: "operating-margin", input_observation_ids: ["op-2026", "rev-2026"] },
+    { id: "result-current", metric_id: "current_ratio", result: 1.55, formula_id: "current-ratio", input_observation_ids: ["current-2026"] },
+    { id: "result-fcf", metric_id: "fcf_margin", result: 14.2, formula_id: "fcf-margin", input_observation_ids: ["fcf-2026", "rev-2026"] },
+  ],
+  claims: [{ id: "claim-growth", text: "Revenue grew 11%.", asserted_value: "11%", source_span_id: "span-claim" }],
+  findings: [{ id: "finding-growth", claim_id: "claim-growth", metric_result_id: "result-growth", classification: "contradicted", rationale: "Uploaded figures calculate to 9.66%, not the stated 11%.", tolerance: 0.1, evidence_source_span_ids: ["span-claim", "span-values"], suggested_investigation: "Reconcile the uploaded growth statement." }],
+  report_bundle: { schema_version: "1.0.0", company: "Meridian Live plc" },
+};
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: originalViewport.width });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: originalViewport.height });
   window.history.replaceState({}, "", "/");
 });
 
@@ -14,7 +47,7 @@ describe("MagicFin product shell", () => {
   it("renders the approved full navigation and truthful Home entry", () => {
     render(<App initialRoute="/" />);
     expect(screen.getByRole("heading", { name: /northstar industrial plc/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /run magic/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /analyze files/i })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: /main navigation/i });
     for (const label of ["Home", "Files & Sources", "History", "Review Desk", "Reports"]) {
       expect(within(nav).getByRole("button", { name: label })).toBeInTheDocument();
@@ -26,12 +59,20 @@ describe("MagicFin product shell", () => {
     expect(document.title).toBe("Home · MagicFin");
   });
 
-  it("navigates to Company and exposes the source-linked trend table", async () => {
+  it("sends the Home analysis action to the real uploader without simulating completion", async () => {
     const user = userEvent.setup();
     render(<App initialRoute="/" />);
-    await user.click(screen.getByRole("button", { name: /run magic/i }));
-    expect(screen.getByRole("heading", { name: /northstar industrial plc/i })).toBeInTheDocument();
-    expect(screen.getByText("Annual_Report_2025.pdf")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /analyze files/i }));
+    expect(screen.getByRole("heading", { name: /connect the live file service/i })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/files");
+    expect(window.location.hash).toBe("#upload");
+    await waitFor(() => expect(document.getElementById("upload")).toHaveFocus());
+    expect(screen.queryByText(/analysis complete/i)).not.toBeInTheDocument();
+  });
+
+  it("exposes the source-linked trend table on the populated dashboard", async () => {
+    const user = userEvent.setup();
+    render(<App initialRoute="/" />);
     const tableToggle = screen.getByRole("button", { name: /view accessible data table/i });
     await user.click(tableToggle);
     expect(screen.getByRole("table", { name: /revenue, usd millions; reported data/i })).toBeVisible();
@@ -72,36 +113,6 @@ describe("MagicFin product shell", () => {
     expect(within(table).getAllByText("Reported history")).toHaveLength(3);
   });
 
-  it("enumerates deterministic Run Magic stages and completes truthfully", async () => {
-    vi.useFakeTimers();
-    try {
-      render(<App initialRoute="/company" />);
-      fireEvent.click(screen.getByRole("button", { name: /^run magic$/i }));
-      expect(screen.getByText(/running deterministic checks/i)).toBeInTheDocument();
-      for (const stage of ["Validate sources", "Extract claims", "Calculate metrics", "Link evidence", "Flag discrepancies"]) expect(screen.getAllByText(stage).length).toBeGreaterThan(0);
-      await act(async () => { vi.advanceTimersByTime(2200); });
-      expect(screen.getByText(/evidence trail ready/i)).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("keeps the populated dashboard visible throughout Run Magic", async () => {
-    vi.useFakeTimers();
-    try {
-      render(<App initialRoute="/" />);
-      fireEvent.click(screen.getByRole("button", { name: /^run magic$/i }));
-      expect(screen.getByRole("heading", { name: /northstar industrial plc/i })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: /the four numbers to orient the review/i })).toBeInTheDocument();
-      expect(screen.getByText(/running deterministic checks/i)).toBeInTheDocument();
-      await act(async () => { vi.advanceTimersByTime(2200); });
-      expect(screen.getByText(/evidence trail ready/i)).toBeInTheDocument();
-      expect(document.title).toBe("Home · MagicFin");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("puts headline metrics and the dominant trend before source cards", () => {
     render(<App initialRoute="/" />);
     const metrics = screen.getByRole("heading", { name: /the four numbers to orient the review/i }).closest("section");
@@ -113,6 +124,7 @@ describe("MagicFin product shell", () => {
       expect(within(metrics).getByText(value)).toBeInTheDocument();
     expect(metrics).toHaveTextContent(/FY2025/);
     expect(metrics).toHaveTextContent(/Source/);
+    for (const meaning of [/growth shows whether sales are expanding/i, /profitability shows how much operating profit remains/i, /liquidity indicates the ability to cover near-term obligations/i, /cash flow shows how much revenue becomes free cash/i]) expect(metrics).toHaveTextContent(meaning);
   });
 
   it("opens the four headline metric definitions by keyboard and restores focus", async () => {
@@ -134,6 +146,44 @@ describe("MagicFin product shell", () => {
       expect(dialog).not.toBeInTheDocument();
       expect(trigger).toHaveFocus();
     }
+  });
+
+  it("keeps the metric dialog viewport-bound at 812×814 and restores focus on Escape", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 812 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 814 });
+    const user = userEvent.setup();
+    render(<App initialRoute="/" />);
+    const trigger = screen.getByRole("button", { name: "Define Revenue" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Revenue" });
+    const close = within(dialog).getByRole("button", { name: /close revenue definition/i });
+    expect(dialog.parentElement).toHaveClass("metric-definition-backdrop");
+    expect(dialog.parentElement.parentElement).toBe(document.body);
+    expect(dialog.querySelector(".metric-definition-header")).toBeInTheDocument();
+    expect(dialog.querySelector(".metric-definition-body")).toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("hidden");
+    await waitFor(() => expect(close).toHaveFocus());
+    await user.keyboard("{Escape}");
+    expect(dialog).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("");
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("keeps the 320px metric dialog operable and closes outside without focus loss", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 320 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 640 });
+    const user = userEvent.setup();
+    render(<App initialRoute="/" />);
+    const trigger = screen.getByRole("button", { name: "Define Operating margin" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Operating margin" });
+    expect(trigger).toHaveAttribute("aria-controls", dialog.id);
+    expect(within(dialog).getByText("Current source / method")).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: /close operating margin definition/i })).toHaveFocus());
+    fireEvent.mouseDown(dialog.parentElement);
+    expect(dialog).not.toBeInTheDocument();
+    expect(document.body.style.overflow).toBe("");
+    await waitFor(() => expect(trigger).toHaveFocus());
   });
 
   it("opens and closes the cited assistant with Escape and restores focus", async () => {
@@ -217,31 +267,73 @@ describe("MagicFin product shell", () => {
     const input = document.querySelector('input[type="file"]');
     await user.upload(input, new File(["demo"], "report.pdf", { type: "application/pdf" }));
     expect(screen.getByRole("heading", { name: /source set needs attention/i })).toBeInTheDocument();
-    expect(screen.getByText(/nothing was uploaded, read, or retained/i)).toBeInTheDocument();
+    expect(screen.getByText(/live file session is required/i)).toBeInTheDocument();
+    expect(screen.queryByText(/analysis complete/i)).not.toBeInTheDocument();
   });
 
-  it("accepts only the named PDF and XLSX fixture pair and enables the workspace", async () => {
-    vi.useFakeTimers();
-    try {
-      render(<App initialRoute="/files" />);
-      const input = document.querySelector('input[type="file"]');
-      fireEvent.change(input, { target: { files: [
-        new File(["fixture"], "Annual_Report_2025.pdf", { type: "application/pdf" }),
-        new File(["fixture"], "Financials_FY2025.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
-      ] } });
-      expect(screen.getByText(/following the fixture evidence trail/i)).toBeInTheDocument();
-      await act(async () => { vi.advanceTimersByTime(1400); });
-      expect(screen.getByRole("heading", { name: /sources are ready/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /open company workspace/i })).toBeEnabled();
-    } finally {
-      vi.useRealTimers();
-    }
+  it("keeps sample data secondary and never presents it as uploaded analysis", async () => {
+    const user = userEvent.setup();
+    render(<App initialRoute="/files" />);
+    const live = screen.getByRole("button", { name: /connect live file service/i });
+    const sample = screen.getByRole("button", { name: /try sample data/i });
+    expect(live).toHaveClass("primary");
+    expect(sample).toHaveClass("secondary");
+    await user.click(sample);
+    expect(screen.getByRole("heading", { name: /sample sources loaded/i })).toBeInTheDocument();
+    expect(screen.getByText(/does not represent an uploaded analysis/i)).toBeInTheDocument();
+    expect(screen.getByText("About sample data")).toBeInTheDocument();
+    expect(screen.queryByText(/live analysis complete/i)).not.toBeInTheDocument();
+  });
+
+  it("updates dashboard graphs and summary only from a successful live analysis response", async () => {
+    const user = userEvent.setup();
+    const jsonResponse = (body, ok = true) => ({ ok, status: ok ? 200 : 422, json: async () => body });
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ session_id: "live-session", csrf_token: "memory-only" }))
+      .mockResolvedValueOnce(jsonResponse({ display_name: "Meridian_Report_2026.pdf" }))
+      .mockResolvedValueOnce(jsonResponse({ display_name: "Meridian_Financials_2026.xlsx" }))
+      .mockResolvedValueOnce(jsonResponse(liveAnalysisResponse)));
+    render(<App initialRoute="/files" />);
+    await user.click(screen.getByRole("button", { name: /connect live file service/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
+      new File(["%PDF"], "Meridian_Report_2026.pdf", { type: "application/pdf" }),
+      new File(["workbook"], "Meridian_Financials_2026.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    ] } });
+    expect(screen.getByText(/dashboard and report update only after the server returns/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("heading", { name: /live analysis complete/i })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /view updated dashboard/i }));
+    expect(screen.getByRole("heading", { name: /meridian live plc/i })).toBeInTheDocument();
+    expect(screen.getByText(/uploaded figures calculate to 9.66%, not the stated 11%/i)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /revenue, usd units, reported history from FY2025 through FY2026/i })).toBeInTheDocument();
+  });
+
+  it("preserves the previous dashboard when live analysis fails and never falls back to sample data", async () => {
+    const user = userEvent.setup();
+    const jsonResponse = (body, ok = true) => ({ ok, status: ok ? 200 : 503, json: async () => body });
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ session_id: "failed-session", csrf_token: "memory-only" }))
+      .mockResolvedValueOnce(jsonResponse({ display_name: "Arbitrary.pdf" }))
+      .mockResolvedValueOnce(jsonResponse({ display_name: "Arbitrary.xlsx" }))
+      .mockResolvedValueOnce(jsonResponse({ reason_code: "PROVIDER_ACCESS_REQUIRED" }, false)));
+    render(<App initialRoute="/files" />);
+    await user.click(screen.getByRole("button", { name: /connect live file service/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
+      new File(["%PDF"], "Arbitrary.pdf", { type: "application/pdf" }),
+      new File(["workbook"], "Arbitrary.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    ] } });
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/live review processing is unavailable/i));
+    expect(screen.queryByText(/sample sources loaded|live analysis complete/i)).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole("navigation", { name: /main navigation/i })).getByRole("button", { name: "Home" }));
+    expect(screen.getByRole("heading", { name: /northstar industrial plc/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /meridian live plc/i })).not.toBeInTheDocument();
   });
 
   it("combines upload and a searchable Source Library while preserving old source deep links", async () => {
     const user = userEvent.setup();
     render(<App initialRoute="/files" />);
-    expect(screen.getByRole("heading", { name: /bring the report and the numbers together/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /upload, validate, analyze/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /evidence with a visible address/i })).toBeInTheDocument();
     await user.type(screen.getByRole("searchbox", { name: /search sources/i }), "earnings");
     expect(screen.getByRole("heading", { name: /earnings_release_q4.pdf/i })).toBeInTheDocument();
@@ -440,20 +532,6 @@ describe("MagicFin product shell", () => {
     await user.click(screen.getByRole("button", { name: /^review desk$/i }));
     expect(screen.getByRole("heading", { name: /revenue grew 9.0% in FY2026/i })).toBeInTheDocument();
     expect(screen.getAllByText("7.1%").length).toBeGreaterThan(0);
-  });
-
-  it("finishes Run Magic quickly when reduced motion is enabled", async () => {
-    vi.useFakeTimers();
-    try {
-      render(<App initialRoute="/settings" />);
-      fireEvent.click(screen.getByRole("checkbox", { name: /reduce interface motion/i }));
-      fireEvent.click(screen.getByRole("button", { name: /^home$/i }));
-      fireEvent.click(screen.getByRole("button", { name: /^run magic$/i }));
-      await act(async () => { vi.advanceTimersByTime(150); });
-      expect(screen.getByText(/evidence trail ready/i)).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("respects the operating-system reduced-motion preference by default", () => {
