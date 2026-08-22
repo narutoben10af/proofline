@@ -101,6 +101,11 @@ The compact fixture-backed lenses are available at `GET /api/v1/company-lenses/a
 `ReportRenderBundle`; it returns an attachment with `ETag`, `X-Content-SHA256`, and `no-store`.
 Use `?output=evidence-json` on the same endpoint for the reviewed canonical JSON fallback. Rendering
 never fetches a source, refreshes economic data, recalculates a metric, or creates a forecast.
+Apple and PCG are demo fixtures, not a report issuer allowlist: uploaded issuers use a deterministic
+company ID and the same typed renderer. The bundle selects four sourced primary observations and
+four secondary ratios, enforces one issuer/currency/period boundary, and can explicitly render the
+absence of reviewed economic context. It does not render shareholder, ownership, recommendation,
+or unsupported forecast assertions.
 
 ### Current limitations
 

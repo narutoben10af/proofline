@@ -667,6 +667,57 @@
       "title": "Finding",
       "type": "object"
     },
+    "InvestorReportProfile": {
+      "additionalProperties": false,
+      "description": "ID-only presentation choices; all displayed values resolve to hashed analysis evidence.",
+      "properties": {
+        "forecast": {
+          "default": null,
+          "title": "Forecast",
+          "type": "null"
+        },
+        "primary_observation_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "title": "Primary Observation Ids",
+          "type": "array"
+        },
+        "reporting_period": {
+          "$ref": "#/$defs/Period"
+        },
+        "reviewer_state": {
+          "const": "reviewed",
+          "default": "reviewed",
+          "title": "Reviewer State",
+          "type": "string"
+        },
+        "secondary_metric_result_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "title": "Secondary Metric Result Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "reporting_period",
+        "primary_observation_ids",
+        "secondary_metric_result_ids"
+      ],
+      "title": "InvestorReportProfile",
+      "type": "object"
+    },
     "MetricId": {
       "enum": [
         "revenue_growth_yoy",
@@ -983,6 +1034,12 @@
           "title": "Indicator",
           "type": "string"
         },
+        "official_source_confirmed": {
+          "const": true,
+          "default": true,
+          "title": "Official Source Confirmed",
+          "type": "boolean"
+        },
         "official_source_url": {
           "title": "Official Source Url",
           "type": "string"
@@ -1163,11 +1220,11 @@
       "type": "string"
     },
     "economic_context": {
+      "default": [],
       "items": {
         "$ref": "#/$defs/ResolvedEconomicContextPoint"
       },
       "maxItems": 8,
-      "minItems": 1,
       "title": "Economic Context",
       "type": "array"
     },
@@ -1188,6 +1245,9 @@
       "default": "1.0.0",
       "title": "Policy Version",
       "type": "string"
+    },
+    "report_profile": {
+      "$ref": "#/$defs/InvestorReportProfile"
     },
     "schema_version": {
       "const": "1.0.0",
@@ -1224,7 +1284,7 @@
     "company",
     "analysis",
     "snapshot",
-    "economic_context",
+    "report_profile",
     "source_mode",
     "source_disclosure"
   ],
