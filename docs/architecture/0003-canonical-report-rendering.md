@@ -28,15 +28,17 @@ or storage. Invalid IDs, counts, evidence hash, context, trend comparability, ca
 forecast markers reject the bundle before PDF bytes are returned.
 
 Report identity is bound fail-closed: a bundle requires a non-empty single document-issuer set,
-that issuer must equal the bundle company, the company ID must match either the checked-in fixture
-registry or a company-derived slug, and populated claim entities must match. A fixed
-company-qualified title prevents independent report rebranding.
+that issuer must equal the bundle company, the company ID must match the checked-in reviewed-company
+registry, and populated claim entities must match. A fixed company-qualified title prevents
+independent report rebranding. `snapshot.analysis_id` is the `sha256:`-prefixed canonical hash of
+the supplied `AnalysisResponse`.
 
-All client-controlled narrative fields presented by the report pass through one deterministic
-policy boundary that rejects causal attribution, investment recommendations or directives, and
-forward-looking language. Suggested investigations use only the classifier's three exact review
-actions. Attributed evidence quotes and spreadsheet display values are preserved as evidence rather
-than treated as Proofline assertions. Canonical JSON rejects non-string mapping keys before sorting.
+The renderer never emits arbitrary model-authored narrative. Claim sentences come from typed metric
+fields, findings must equal a fresh deterministic classifier result, and title, limitations,
+context/trend narratives, document labels, and source disclosures use exact reviewed vocabularies.
+Attributed evidence quotes and spreadsheet display values are preserved only as evidence rather
+than treated as Proofline assertions. Canonical JSON rejects non-string mapping keys before sorting
+and normalizes signed float zero.
 
 ## Consequences
 

@@ -14,6 +14,7 @@ def test_company_lenses_use_official_sources_and_compact_defaults() -> None:
     assert len(apple.economic_context) == 4
     assert len(pcg.economic_context) == 4
     assert len(pcg.additional_context) == 1
+    assert "selling-price" in pcg.economic_context[1].comparability_warning
     assert len(apple.trend.points) == 3
     assert len(pcg.trend.points) == 3
     for lens in (apple, pcg):

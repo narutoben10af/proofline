@@ -3,23 +3,28 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import re
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
+from functools import lru_cache
+from importlib.resources import files
 from typing import Any, Literal
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, model_validator
 
+from proofline.classification import classify
 from proofline.contracts import (
     METRIC_REGISTRY_VERSION,
     POLICY_VERSION,
     SCHEMA_VERSION,
     AnalysisResponse,
     Classification,
+    FinancialClaim,
     FrozenModel,
     Identifier,
+    MetricId,
+    MetricResult,
     Period,
     ReportSnapshot,
 )
@@ -33,6 +38,9 @@ DATA_HANDLING_DISCLOSURE = (
 LIVE_SOURCE_DISCLOSURE = (
     "Rendered from the supplied calculated analysis; no data was fetched or recalculated "
     "during PDF rendering."
+)
+VERIFIED_CACHED_SOURCE_DISCLOSURE = (
+    "Verified cached fixture reviewed on 2026-08-22; no source refresh occurred."
 )
 CACHED_BANNER = "VERIFIED CACHED ANALYSIS - review the cache disclosure below."
 LIVE_BANNER = "CALCULATED ANALYSIS - rendered from the supplied immutable bundle."
@@ -49,105 +57,25 @@ _OFFICIAL_HOSTS = {
     "fred.stlouisfed.org",
     "petronas.com",
 }
-_WORD_PATTERN = re.compile(r"[a-z]+(?:'[a-z]+)?")
-_PROHIBITED_REPORT_TOKENS = frozenset(
-    {
-        # Causal attribution is outside the report policy boundary.
-        "cause",
-        "caused",
-        "causes",
-        "causing",
-        "driven",
-        "drove",
-        "explain",
-        "explained",
-        "explaining",
-        "explains",
-        # Investment recommendations, directives, and imperatives are prohibited.
-        "advice",
-        "advisable",
-        "advise",
-        "advised",
-        "advises",
-        "advising",
-        "buy",
-        "hold",
-        "invest",
-        "must",
-        "ought",
-        "recommend",
-        "recommendation",
-        "recommendations",
-        "recommended",
-        "recommending",
-        "recommends",
-        "sell",
-        "should",
-        # Forward-looking output is not accepted by this historical renderer.
-        "anticipate",
-        "anticipated",
-        "anticipates",
-        "anticipating",
-        "expect",
-        "expected",
-        "expects",
-        "forecast",
-        "forecasted",
-        "forecasting",
-        "forecasts",
-        "future",
-        "likely",
-        "outlook",
-        "predict",
-        "predicted",
-        "predicting",
-        "predicts",
-        "projected",
-        "projection",
-        "projections",
-        "prospective",
-        "shall",
-        "will",
-    }
-)
-_PROHIBITED_REPORT_PHRASES = frozenset(
-    {
-        ("arising", "from"),
-        ("as", "a", "result", "of"),
-        ("associated", "with"),
-        ("attributable", "to"),
-        ("attributed", "to"),
-        ("because",),
-        ("because", "of"),
-        ("contributed", "to"),
-        ("due", "to"),
-        ("lead", "to"),
-        ("leading", "to"),
-        ("leads", "to"),
-        ("led", "to"),
-        ("linked", "to"),
-        ("next", "period"),
-        ("next", "quarter"),
-        ("next", "year"),
-        ("owing", "to"),
-        ("result", "in"),
-        ("resulted", "in"),
-        ("resulting", "in"),
-        ("results", "in"),
-        ("stemming", "from"),
-    }
-)
-_ALLOWED_INVESTIGATIONS = frozenset(
-    {
-        "Check the claim definition, rounding, and cited source values.",
-        "Obtain a quantified, comparable claim and verify its source context.",
-        "Resolve the input exception and verify the cited source evidence.",
-    }
-)
 _REGISTERED_COMPANIES = {
     "apple-fy2025": "Apple Inc.",
+    "example-group-fy2025": "Example Group",
     "pcg-fy2025": "PETRONAS Chemicals Group Berhad",
 }
+_ALLOWED_LIMITATIONS = frozenset({"Prototype output requires human review."})
+_ALLOWED_DOCUMENT_VERSION_LABELS = frozenset({"FY2023", "FY2024", "FY2025"})
+_ALLOWED_TREND_VOCABULARY = frozenset(
+    {
+        ("Apple Inc.", "Total net sales", "USD millions", "Apple consolidated annual net sales"),
+        ("Example Group", "Revenue", "USD millions", "Consolidated annual revenue"),
+        (
+            "PETRONAS Chemicals Group Berhad",
+            "Revenue",
+            "RM millions",
+            "PCG consolidated annual revenue",
+        ),
+    }
+)
 
 
 class SourceMode(StrEnum):
@@ -165,29 +93,79 @@ def _require_official_https(value: str) -> str:
     return value
 
 
-def _reject_report_language(value: str, field: str) -> None:
-    tokens = tuple(_WORD_PATTERN.findall(value.casefold()))
-    if _PROHIBITED_REPORT_TOKENS.intersection(tokens) or any(
-        tokens[index : index + len(phrase)] == phrase
-        for phrase in _PROHIBITED_REPORT_PHRASES
-        for index in range(len(tokens) - len(phrase) + 1)
-    ):
-        raise ValueError(f"{field} contains prohibited causal, advisory, or forecast language")
-
-
-def _identity_slug(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
-
-
 def _require_company_id_matches_name(company_id: str, company: str) -> None:
     registered_company = _REGISTERED_COMPANIES.get(company_id)
-    if registered_company is not None:
-        if registered_company.casefold() != company.casefold():
-            raise ValueError("company_id does not match the registered company")
-        return
-    company_slug = _identity_slug(company)
-    if company_id != company_slug and not company_id.startswith(f"{company_slug}-"):
-        raise ValueError("company_id must be derived from the company name")
+    if registered_company is None:
+        raise ValueError("company_id is not in the reviewed company registry")
+    if registered_company.casefold() != company.casefold():
+        raise ValueError("company_id does not match the registered company")
+
+
+def report_claim_text(claim: FinancialClaim) -> str:
+    if claim.asserted_value is not None:
+        if claim.metric_id == MetricId.REVENUE_GROWTH_YOY:
+            return f"Revenue grew {_decimal_string(claim.asserted_value * 100)}%."
+        if claim.metric_id == MetricId.OPERATING_MARGIN:
+            return f"Operating margin was {_decimal_string(claim.asserted_value * 100)}%."
+        if claim.metric_id == MetricId.CURRENT_RATIO:
+            return f"Current ratio was {format(claim.asserted_value, 'f')}."
+        if claim.metric_id == MetricId.FCF_MARGIN:
+            return f"Project-defined FCF margin was {_decimal_string(claim.asserted_value * 100)}%."
+    if claim.metric_id == MetricId.REVENUE_GROWTH_YOY and claim.asserted_direction is not None:
+        direction = {
+            "up": "increased",
+            "down": "decreased",
+            "flat": "was unchanged",
+        }[claim.asserted_direction]
+        return f"Revenue {direction}."
+    raise ValueError("claim is not representable by the fixed report vocabulary")
+
+
+def report_finding_rationale(claim: FinancialClaim, result: MetricResult) -> str:
+    if result.exceptional_state is not None:
+        return f"A deterministic comparison was not possible: {result.exceptional_state.value}."
+    if claim.asserted_value is not None and result.result is not None:
+        difference = abs(claim.asserted_value - result.result)
+        return (
+            f"Claimed {_decimal_string(claim.asserted_value)} and calculated "
+            f"{_decimal_string(result.result)} differ by {_decimal_string(difference)}."
+        )
+    return "The typed evidence did not meet the fixed requirements for a decisive comparison."
+
+
+def _context_narrative(record: Any) -> tuple[str, ...]:
+    return (
+        record["company"] if isinstance(record, dict) else record.company,
+        record["indicator"] if isinstance(record, dict) else record.indicator,
+        record["geography"] if isinstance(record, dict) else record.geography,
+        record["display_value"] if isinstance(record, dict) else record.display_value,
+        record["unit"] if isinstance(record, dict) else record.unit,
+        record["relevance"] if isinstance(record, dict) else record.relevance,
+        record["comparability_warning"]
+        if isinstance(record, dict)
+        else record.comparability_warning,
+    )
+
+
+@lru_cache(maxsize=1)
+def _approved_context_narratives() -> dict[str, tuple[str, ...]]:
+    path = files("proofline").joinpath("fixtures/economic_context_fy2025.json")
+    fixture = json.loads(path.read_text(encoding="utf-8"))
+    approved = {
+        record["id"]: _context_narrative(record)
+        for company in fixture["companies"].values()
+        for record in company["context"]
+    }
+    approved["context-us-gdp"] = (
+        "Example Group",
+        "U.S. real GDP annual growth",
+        "United States",
+        "2.1%",
+        "percent year over year",
+        "Broad activity context for the reviewed period.",
+        "National output does not match the reporting entity or fiscal period.",
+    )
+    return approved
 
 
 class ResolvedEconomicContextPoint(FrozenModel):
@@ -214,16 +192,9 @@ class ResolvedEconomicContextPoint(FrozenModel):
             raise ValueError("economic context value must be finite and bounded")
         if self.published_on > self.retrieved_on:
             raise ValueError("publication date cannot be after retrieval date")
-        for field, value in (
-            ("context company", self.company),
-            ("context indicator", self.indicator),
-            ("context geography", self.geography),
-            ("context display value", self.display_value),
-            ("context unit", self.unit),
-            ("context relevance", self.relevance),
-            ("context comparability warning", self.comparability_warning),
-        ):
-            _reject_report_language(value, field)
+        approved = _approved_context_narratives().get(self.id)
+        if approved is None or _context_narrative(self) != approved:
+            raise ValueError("context narrative is not in the reviewed context registry")
         return self
 
 
@@ -264,11 +235,9 @@ class FinancialTrendSeries(FrozenModel):
         durations = {point.period.duration_weeks for point in self.points}
         if len(durations) != 1:
             raise ValueError("trend points must use comparable period durations")
-        _reject_report_language(self.company, "trend company")
-        _reject_report_language(self.indicator, "trend indicator")
-        _reject_report_language(self.unit, "trend unit")
-        for point in self.points:
-            _reject_report_language(point.reporting_basis, "trend reporting basis")
+        vocabulary = (self.company, self.indicator, self.unit, next(iter(bases)))
+        if vocabulary not in _ALLOWED_TREND_VOCABULARY:
+            raise ValueError("trend labels are not in the reviewed trend vocabulary")
         return self
 
 
@@ -326,11 +295,9 @@ class ReportRenderBundle(FrozenModel):
         if self.source_mode == SourceMode.CALCULATED_LIVE:
             if self.source_disclosure != LIVE_SOURCE_DISCLOSURE:
                 raise ValueError("calculated_live requires the fixed live disclosure")
-        elif not self.source_disclosure.strip():
-            raise ValueError("verified_cached requires a cache disclosure")
+        elif self.source_disclosure != VERIFIED_CACHED_SOURCE_DISCLOSURE:
+            raise ValueError("verified_cached requires the fixed cache disclosure")
         _require_company_id_matches_name(self.company_id, self.company)
-        _reject_report_language(self.company, "bundle company")
-        _reject_report_language(self.source_disclosure, "source disclosure")
 
         groups = (
             ("document", tuple(item.id for item in self.analysis.documents)),
@@ -354,8 +321,8 @@ class ReportRenderBundle(FrozenModel):
         if next(iter(issuers)) != self.company.casefold():
             raise ValueError("report document issuer must match bundle company")
         for document in self.analysis.documents:
-            _reject_report_language(document.issuer, "document issuer")
-            _reject_report_language(document.version_label, "document version label")
+            if document.version_label not in _ALLOWED_DOCUMENT_VERSION_LABELS:
+                raise ValueError("document version label is not in the reviewed vocabulary")
         spans = {item.id: item for item in self.analysis.source_spans}
         claims = {item.id: item for item in self.analysis.claims}
         observations = {item.id: item for item in self.analysis.observations}
@@ -376,13 +343,12 @@ class ReportRenderBundle(FrozenModel):
                 raise ValueError(f"unknown claim source_span_id: {claim.source_span_id}")
             if claim.entity is not None and claim.entity.casefold() != self.company.casefold():
                 raise ValueError("claim entity must match bundle company")
-            _reject_report_language(claim.text, "claim text")
+            if claim.text != report_claim_text(claim):
+                raise ValueError("claim text does not match the fixed metric vocabulary")
         for result in results.values():
             unknown = set(result.input_observation_ids) - observations.keys()
             if unknown:
                 raise ValueError(f"unknown metric input observation IDs: {sorted(unknown)}")
-            for warning in result.warnings:
-                _reject_report_language(warning, "metric result warning")
         for finding in findings.values():
             if finding.claim_id not in claims:
                 raise ValueError(f"unknown finding claim_id: {finding.claim_id}")
@@ -391,16 +357,19 @@ class ReportRenderBundle(FrozenModel):
             unknown = set(finding.evidence_source_span_ids) - spans.keys()
             if unknown:
                 raise ValueError(f"unknown finding evidence span IDs: {sorted(unknown)}")
-            _reject_report_language(finding.rationale, "finding rationale")
-            for warning in finding.warnings:
-                _reject_report_language(warning, "finding warning")
-            if finding.suggested_investigation is not None:
-                if finding.suggested_investigation not in _ALLOWED_INVESTIGATIONS:
-                    raise ValueError("finding suggested investigation is not an allowed action")
-                _reject_report_language(
-                    finding.suggested_investigation,
-                    "finding suggested investigation",
-                )
+            input_observations = tuple(
+                observations[observation_id]
+                for observation_id in results[finding.metric_result_id].input_observation_ids
+            )
+            expected_finding = classify(
+                finding.id,
+                claims[finding.claim_id],
+                results[finding.metric_result_id],
+                input_observations,
+                finding.evidence_source_span_ids,
+            )
+            if finding != expected_finding:
+                raise ValueError("finding does not match deterministic classification output")
 
         ordered_finding_ids = self.snapshot.finding_ids
         if not ordered_finding_ids:
@@ -436,8 +405,11 @@ class ReportRenderBundle(FrozenModel):
         if sum(point.default_visible for point in self.economic_context) > 4:
             raise ValueError("no more than four context points may be visible by default")
 
-        if self.snapshot.evidence_chain_sha256 != canonical_sha256(self.analysis):
+        analysis_sha256 = canonical_sha256(self.analysis)
+        if self.snapshot.evidence_chain_sha256 != analysis_sha256:
             raise ValueError("snapshot evidence hash does not match the full analysis response")
+        if self.snapshot.analysis_id != f"sha256:{analysis_sha256}":
+            raise ValueError("snapshot analysis_id must identify the canonical analysis hash")
         if (
             self.snapshot.reviewed_at.tzinfo is None
             or self.snapshot.reviewed_at.utcoffset() is None
@@ -457,8 +429,8 @@ class ReportRenderBundle(FrozenModel):
                     raise ValueError("trend cannot include a period after the review date")
         if self.snapshot.title != f"{self.company} reviewed evidence report":
             raise ValueError("snapshot title must use the fixed company-bound report title")
-        for value in (self.snapshot.title, *self.snapshot.limitations):
-            _reject_report_language(value, "report-generated text")
+        if any(value not in _ALLOWED_LIMITATIONS for value in self.snapshot.limitations):
+            raise ValueError("snapshot limitation is not in the reviewed report vocabulary")
         return self
 
 
@@ -503,6 +475,8 @@ def canonical_value(value: Any) -> Any:
     if isinstance(value, float):
         if not math.isfinite(value):
             raise ValueError("non-finite float cannot be canonicalized")
+        if value == 0:
+            return 0.0
     return value
 
 

@@ -13,10 +13,12 @@ from pypdf import PdfReader
 
 from proofline.api import app
 from proofline.contracts import AnalysisRequest, AnalysisResponse, ReportSnapshot
+from proofline.economic_context import get_company_lens
 from proofline.report_contracts import (
     DATA_HANDLING_DISCLOSURE,
     LIVE_SOURCE_DISCLOSURE,
     NO_CAUSATION,
+    VERIFIED_CACHED_SOURCE_DISCLOSURE,
     FinancialTrendSeries,
     ReportRenderBundle,
     ResolvedEconomicContextPoint,
@@ -96,7 +98,7 @@ def _bundle(
     point = _context()
     snapshot = ReportSnapshot(
         snapshot_id="reviewed-example-fy2025",
-        analysis_id="analysis-example-fy2025",
+        analysis_id=f"sha256:{canonical_sha256(response)}",
         title="Example Group reviewed evidence report",
         reviewed_at=datetime(2026, 8, 22, tzinfo=UTC),
         classification_counts={
@@ -167,7 +169,7 @@ def test_pdf_is_byte_deterministic_and_sections_are_ordered() -> None:
 
 
 def test_cached_banner_and_disclosure_are_explicit() -> None:
-    disclosure = "Verified cached fixture reviewed on 2026-08-22; no source refresh occurred."
+    disclosure = VERIFIED_CACHED_SOURCE_DISCLOSURE
     text = _text(render_pdf(_bundle(source_mode="verified_cached", source_disclosure=disclosure)))
     assert "VERIFIED CACHED ANALYSIS" in text
     assert disclosure in text
@@ -221,7 +223,7 @@ def test_integrity_mismatches_are_rejected(mutate, message: str) -> None:
 
 def test_claim_changes_are_covered_by_the_evidence_hash() -> None:
     raw = _bundle().model_dump(mode="json")
-    raw["analysis"]["claims"][0]["text"] = "Changed reviewed claim"
+    raw["analysis"]["claims"][0]["source_span_id"] = "span-pdf-2"
     with pytest.raises(ValidationError, match="evidence hash"):
         ReportRenderBundle.model_validate(raw)
 
@@ -246,7 +248,7 @@ def test_uncited_causal_language_in_generated_finding_text_is_rejected() -> None
     raw = _bundle().model_dump(mode="json")
     raw["analysis"]["findings"][0]["rationale"] = "The variance was driven by inflation."
     _rehash_analysis(raw)
-    with pytest.raises(ValidationError, match="finding rationale contains prohibited"):
+    with pytest.raises(ValidationError, match="deterministic classification output"):
         ReportRenderBundle.model_validate(raw)
 
 
@@ -261,6 +263,11 @@ def test_uncited_causal_language_in_generated_finding_text_is_rejected() -> None
         "Revenue will rise next year.",
         "The reviewer must hold the shares.",
         "This is investment advice.",
+        "Inflation triggered the variance",
+        "stems directly from inflation",
+        "Investors may accumulate shares",
+        "Revenue may rise in the coming year",
+        "shares appear undervalued",
     ),
 )
 def test_endpoint_rejects_causal_advisory_imperative_and_forecast_text(
@@ -366,7 +373,13 @@ def test_endpoint_rejects_cross_company_and_mixed_issuer_provenance() -> None:
     relabeled["company"] = "Apple Inc."
     relabeled["snapshot"]["title"] = "Apple Inc. reviewed evidence report"
     relabeled["trend"]["company"] = "Apple Inc."
-    relabeled["economic_context"][0]["company"] = "Apple Inc."
+    relabeled["trend"]["indicator"] = "Total net sales"
+    for point in relabeled["trend"]["points"]:
+        point["reporting_basis"] = "Apple consolidated annual net sales"
+    apple = get_company_lens("apple-fy2025")
+    assert apple is not None
+    relabeled["economic_context"] = [apple.economic_context[0].model_dump(mode="json")]
+    relabeled["snapshot"]["economic_context_point_ids"] = [apple.economic_context[0].id]
     response = _post_report(relabeled)
     assert response.status_code == 422
     assert "issuer must match bundle company" in response.text
@@ -401,6 +414,16 @@ def test_endpoint_binds_company_id_and_claim_entity() -> None:
     assert "claim entity must match bundle company" in response.text
 
 
+def test_endpoint_binds_snapshot_analysis_id_to_canonical_analysis() -> None:
+    raw = _bundle().model_dump(mode="json")
+    raw["snapshot"]["analysis_id"] = "arbitrary-analysis-id"
+
+    response = _post_report(raw)
+
+    assert response.status_code == 422
+    assert "analysis_id must identify the canonical analysis hash" in response.text
+
+
 def test_invalid_context_and_forecasts_are_rejected() -> None:
     context = _context().model_dump(mode="json")
     context["official_source_url"] = "http://example.test/not-official"
@@ -429,7 +452,17 @@ def test_exceptional_metrics_render_without_numeric_formatting() -> None:
     analysis = _analysis().model_dump(mode="json")
     analysis["metric_results"][0]["result"] = None
     analysis["metric_results"][0]["exceptional_state"] = "missing_input"
-    analysis["findings"][0]["classification"] = "uncertain"
+    analysis["findings"][0].update(
+        {
+            "classification": "uncertain",
+            "rationale": "A deterministic comparison was not possible: missing_input.",
+            "tolerance": None,
+            "warnings": [],
+            "suggested_investigation": (
+                "Resolve the input exception and verify the cited source evidence."
+            ),
+        }
+    )
     response = AnalysisResponse.model_validate(analysis)
     text = _text(render_pdf(_bundle(analysis=response)))
     assert "Exceptional state: missing_input" in text
@@ -542,3 +575,11 @@ def test_canonical_json_rejects_non_string_mapping_keys_deterministically() -> N
     for value in ({"1": "string", 1: "number"}, {1: "number", "1": "string"}):
         with pytest.raises(TypeError, match="canonical mappings require string keys"):
             canonical_json_bytes(value)
+
+
+def test_canonical_float_signed_zero_is_normalized() -> None:
+    positive = {"x": 0.0}
+    negative = {"x": -0.0}
+
+    assert canonical_json_bytes(positive) == canonical_json_bytes(negative)
+    assert canonical_sha256(positive) == canonical_sha256(negative)

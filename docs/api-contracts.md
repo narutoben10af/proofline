@@ -108,15 +108,16 @@ The typed ReportLab renderer uses only core fonts and deterministic invariant mo
 XML-like source text and represents unsupported core-font glyphs as stable `[U+XXXX]` markers. It
 does not fetch official sources, recalculate analysis, refresh context, or render forecasts.
 
-The report policy boundary rejects causal attribution, investment advice, directives, and
-forward-looking language in every client-controlled narrative field rendered as report content.
-The title is fixed to `<company> reviewed evidence report`, and `suggested_investigation` accepts
-only the three deterministic review actions emitted by the classifier. Explicitly attributed PDF
-quotes and spreadsheet display values remain verbatim evidence and are not rewritten. Every report
-must contain at least one document, all documents must have the same issuer, that issuer must equal
-`bundle.company`, `company_id` must match the registered fixture or a company-derived slug, and any
-claim entity must match the same company. Canonical mappings reject non-string keys before sorting
-so malformed inputs fail deterministically rather than raising an order-dependent sort error.
+The report policy boundary does not attempt to enumerate unsafe phrases. Every non-evidence text
+slot uses renderer-authored structured text or an exact reviewed vocabulary: fixed metric claim
+sentences, deterministic classifier findings, one fixed company-bound title, one limitation,
+registered context/trend labels, and fixed live/cached disclosures. Explicitly attributed PDF
+quotes and spreadsheet display values remain verbatim evidence in the provenance appendix. Every
+report must contain at least one document, all documents must have the same issuer, that issuer must
+equal `bundle.company`, `company_id` must be in the reviewed company registry, and any claim entity
+must match the same company. `snapshot.analysis_id` is exactly `sha256:<canonical AnalysisResponse
+hash>`, so it cannot be relabeled independently. Canonical mappings reject non-string keys before
+sorting and normalize both float `0.0` and `-0.0` to the same representation.
 
 Deletion applies only to application-managed session storage. It does not provide secure erasure,
 delete data held by providers, or remove PDF or JSON exports already downloaded by users.

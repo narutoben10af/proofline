@@ -30,6 +30,8 @@ from proofline.report_contracts import (
     ReportRenderBundle,
     SourceMode,
     canonical_json_bytes,
+    report_claim_text,
+    report_finding_rationale,
 )
 
 _CORE_REPLACEMENTS = {
@@ -275,8 +277,9 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
     hero_claim = claims[hero.claim_id]
     story.append(
         _paragraph(
-            f"Hero finding - {hero.classification.value.upper()}: {hero_claim.text} "
-            f"Review rationale: {hero.rationale}",
+            f"Hero finding - {hero.classification.value.upper()}: "
+            f"{report_claim_text(hero_claim)} Review rationale: "
+            f"{report_finding_rationale(hero_claim, results[hero.metric_result_id])}",
             styles["Hero"],
         )
     )
@@ -294,20 +297,20 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
             if result.result is not None
             else f"Exceptional state: {result.exceptional_state.value}"
         )
+        warning_count = len(result.warnings + finding.warnings)
         warning = (
-            f" Warnings: {'; '.join(result.warnings + finding.warnings)}"
-            if (result.warnings or finding.warnings)
-            else ""
+            f" Review warning count: {warning_count}; see evidence export." if warning_count else ""
         )
         story.append(
             KeepTogether(
                 [
                     _paragraph(
-                        f"{index}. {finding.classification.value.upper()} - {claim.text}",
+                        f"{index}. {finding.classification.value.upper()} - "
+                        f"{report_claim_text(claim)}",
                         styles["BodySmall"],
                     ),
                     _paragraph(
-                        f"Result: {outcome}. {finding.rationale}{warning}",
+                        f"Result: {outcome}. {report_finding_rationale(claim, result)}{warning}",
                         styles["BodySmall"],
                     ),
                 ]
