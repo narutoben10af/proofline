@@ -1,4 +1,5 @@
 import { SupabaseAuthAdapter } from "./auth-adapter";
+import { SupabaseAssistantAdapter } from "./assistant-adapter";
 import { readBrowserAuthConfig } from "./auth-config";
 import { AuthenticatedPrivateStorageAdapter } from "./private-storage-adapter";
 import { createSupabaseAuthClient } from "./supabase-client";
@@ -16,6 +17,7 @@ export function createMagicFinAuthHandoff({ env, origin, clientFactory } = {}) {
     config,
     auth,
     privateStorage: client ? new AuthenticatedPrivateStorageAdapter(client, auth) : null,
+    assistant: client ? new SupabaseAssistantAdapter(client, auth) : null,
     handleCallback: (url) => auth.handleCallback(url),
   };
 }

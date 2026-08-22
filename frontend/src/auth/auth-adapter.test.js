@@ -11,12 +11,12 @@ const CONFIG = {
   callbackPath: "/auth/callback",
 };
 
-function client({ session = null, verifiedOwner = OWNER } = {}) {
+function client({ session = null, verifiedOwner = OWNER, verifiedUser = {} } = {}) {
   const unsubscribe = vi.fn();
   return {
     auth: {
       getSession: vi.fn().mockResolvedValue({ data: { session }, error: null }),
-      getUser: vi.fn().mockResolvedValue({ data: { user: { id: verifiedOwner } }, error: null }),
+      getUser: vi.fn().mockResolvedValue({ data: { user: { id: verifiedOwner, ...verifiedUser } }, error: null }),
       onAuthStateChange: vi.fn().mockReturnValue({ data: { subscription: { unsubscribe } } }),
       signInWithOAuth: vi.fn().mockResolvedValue({ data: {}, error: null }),
       exchangeCodeForSession: vi.fn().mockResolvedValue({ data: { session: SESSION }, error: null }),
@@ -64,6 +64,34 @@ describe("Supabase Auth adapter", () => {
       returnTo: "/review",
     });
     expect(JSON.stringify(result)).not.toContain("signed-user-jwt");
+  });
+
+  it("exposes only safe verified profile fields for the visible account state", async () => {
+    const sdk = client({ session: SESSION, verifiedUser: { email: "ada@example.com", user_metadata: { full_name: "Ada Lovelace" } } });
+    const adapter = new SupabaseAuthAdapter(CONFIG, sdk);
+    await expect(adapter.initialize()).resolves.toEqual({
+      status: "authenticated",
+      ownerId: OWNER,
+      email: "ada@example.com",
+      displayName: "Ada Lovelace",
+    });
+  });
+
+  it("does not let an in-flight empty initialization overwrite callback authentication", async () => {
+    const sdk = client();
+    let releaseInitialSession;
+    sdk.auth.getSession = vi.fn().mockImplementationOnce(
+      () => new Promise((resolve) => { releaseInitialSession = resolve; }),
+    );
+    const adapter = new SupabaseAuthAdapter(CONFIG, sdk);
+    const initialize = adapter.initialize();
+    const callback = await adapter.handleCallback(
+      "https://magicfin.example/auth/callback?code=one-time-code&return_to=%2Fsign-in",
+    );
+    releaseInitialSession({ data: { session: null }, error: null });
+    await initialize;
+    expect(callback.state).toEqual({ status: "authenticated", ownerId: OWNER });
+    expect(adapter.state).toEqual(callback.state);
   });
 
   it("maps provider cancellation without exposing the provider error description", async () => {
