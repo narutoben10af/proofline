@@ -6,9 +6,14 @@ Proofline is an early public-fixture hackathon prototype. It is not a system of 
 
 There are no released or supported versions yet. Security fixes apply to the default branch while the project remains in prototype development.
 
+For Malaysian privacy readiness, see the [PDPA readiness assessment](docs/privacy/README.md),
+[data-flow and retention record](docs/privacy/data-flow-retention.md), and
+[incident/breach runbook](docs/security/incident-response.md). These documents
+are operational readiness aids, not legal advice or a compliance claim.
+
 ## System and scope
 
-The in-scope prototype accepts only explicitly allowlisted public or synthetic PDF and spreadsheet fixtures, extracts bounded evidence, optionally sends allowlisted source material to a hosted model through a server-side adapter, computes metrics in deterministic code, and retains working data only for a temporary session. It has no authentication, user accounts, persistent database, or multi-tenant document history.
+The supported prototype accepts only explicitly allowlisted public or synthetic PDF and spreadsheet fixtures, extracts bounded evidence, optionally sends allowlisted source material to a hosted model through a server-side adapter, computes metrics in deterministic code, and retains working data only for a temporary session. It has no authentication, user accounts, persistent database, or multi-tenant document history. File upload, temporary byte storage, PDF export, assistant, and provider integrations under development do not widen this supported boundary until their security and privacy gates are reviewed and merged.
 
 Security-sensitive surfaces include:
 
@@ -17,6 +22,7 @@ Security-sensitive surfaces include:
 - model prompts and schema-validated model responses;
 - deterministic calculation and evidence-provenance code;
 - per-session temporary storage and deletion;
+- user-visible privacy, settings, legal, assistant, and export surfaces;
 - browser/API boundaries, logs, build artifacts, and deployment configuration; and
 - dependencies, CI workflows, fixtures, and repository history.
 
@@ -24,7 +30,7 @@ Security-sensitive surfaces include:
 
 Documents, filenames, archive members, PDF objects, workbook formulas, links, metadata, extracted text, images, and model output are attacker-controlled even when a fixture is publicly hosted. A fixture URL or issuer name does not make its bytes trusted.
 
-Browser requests cross into the server-side application. The application then crosses separate boundaries into native parsers, optional OCR/model providers, temporary storage, and deterministic calculation code. Model providers and hosting services are external processors; only the approved public-fixture demo path may send source content to them.
+Browser requests cross into the server-side application. The application then crosses separate boundaries into native parsers, optional OCR/model providers, temporary storage, and deterministic calculation code. Model providers and hosting services are external service boundaries whose legal role, processing location, subprocessors, retention, and deletion terms must be verified for the actual deployment. Calling them processors in product text requires an approved controller/processor assessment and contract. Only the approved public-fixture demo path may send source content to a model provider.
 
 Repository contributors and deployment operators are trusted to approve fixture provenance, configure secrets, and deploy reviewed revisions, but their files and configuration can still be mistaken or compromised. CI output, issue content, and pull-request artifacts are public disclosure surfaces.
 
@@ -59,6 +65,17 @@ Realistic attacker stories include a crafted file exhausting parser resources, e
 - A deletion receipt states the session identifier, completion time, and tested app-managed scope. It must not claim deletion from provider systems, infrastructure backups, transient network buffers, or logs unless those scopes are independently verified.
 - Normal logs contain only event name, coarse status/error code, duration, bounded counts, and a non-reversible request/session correlation value. Never log document bytes/text, extracted passages, spreadsheet values/formulas, prompts containing source material, model responses containing source material, filenames supplied by users, credentials, or full stack traces that embed content.
 
+### Privacy, hosting, exports, and assistant boundaries
+
+- The public/synthetic fixture confirmation is a product boundary, not consent to process personal data and not a Malaysian PDPA notice.
+- Do not enable real-personal-data processing until an accountable operator has approved the controller/processor roles, bilingual notice, lawful processing basis, rights channel, provider/hosting terms and regions, retention schedule, breach ownership, DPO threshold assessment, and registration-class assessment documented in [`docs/privacy/README.md`](docs/privacy/README.md).
+- Keep the browser-to-server data flow explicit. A filename-only preview must not imply upload; a byte-upload path must disclose that files leave the device before selection is submitted.
+- Hosting, analytics, error monitoring, support, OCR, model, storage, and export services must be entered in the data-flow register before they receive personal data. Unknown regions or provider retention are fail-closed blockers for real-personal-data processing.
+- Cross-border transfer of personal data requires a documented section 129 condition, receiving locations, receiver safeguards, transfer assessment, and contract before enablement. A server-side API key does not resolve transfer obligations.
+- Assistant and model output is informational evidence support only: never a solely automated decision about a person, credit, employment, eligibility, or another significant outcome. Preserve source links, uncertainty, human review, and a deterministic path for consequential calculations.
+- Downloaded JSON/PDF reports become user-controlled copies outside session deletion. Exports must state their source snapshot, limitations, and deletion scope; spreadsheet-compatible exports must prevent formula injection.
+- Product privacy/legal routes must describe only deployed behavior. They must not invent an operator identity, contact, DPO, provider, consent, processing region, retention promise, or compliance status.
+
 ### Secrets, environment, and dependencies
 
 - Runtime secrets come from the hosting provider's secret manager or local environment. `.env` files remain ignored; `.env.example` contains names and empty or demonstrably non-secret values only.
@@ -82,6 +99,7 @@ Severity depends on demonstrated reachability and impact. A weakness that requir
 - Only approved public or synthetic fixtures are supported. Masking does not make arbitrary or confidential documents safe.
 - No confidentiality, retention, training-use, regional-processing, or provider-deletion guarantee is made beyond behavior that is tested and documented.
 - No authentication or multi-user authorization boundary exists. Adding accounts, private uploads, persistent storage, or background processing requires a new threat/data-flow review before enablement.
+- The repository does not identify the prototype operator/data controller, a rights contact, deployment regions, provider contracts, processing scale, or registration class. The engineering draft in [`docs/privacy/prototype-data-handling-notice.md`](docs/privacy/prototype-data-handling-notice.md) therefore is not a publishable statutory notice.
 - A lightweight repository check supplements, but does not replace, GitHub secret scanning, push protection, dependency review, code review, parser sandboxing, or runtime tests.
 - Availability of the prototype and third-party model/OCR providers is not guaranteed.
 

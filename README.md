@@ -69,6 +69,7 @@ Only public hackathon fixtures may be sent to hosted Gemma 4. According to the c
 - [`docs/decisions/`](docs/decisions/) — retained legacy ADR template from the repository bootstrap
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution and pull-request workflow
 - [`SECURITY.md`](SECURITY.md) — security policy and private reporting guidance
+- [`docs/privacy/`](docs/privacy/) — Malaysian PDPA readiness analysis, non-publishable data-handling draft, data-flow register, incident runbook, and review gate (not legal advice or a compliance claim)
 
 ## Getting started
 
