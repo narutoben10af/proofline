@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "disclosure": {
+      "title": "Disclosure",
+      "type": "string"
+    },
+    "document_content_sent": {
+      "const": false,
+      "default": false,
+      "title": "Document Content Sent",
+      "type": "boolean"
+    },
+    "live_transport_enabled": {
+      "title": "Live Transport Enabled",
+      "type": "boolean"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "not_configured",
+        "ready",
+        "fixture"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "state",
+    "provider",
+    "model",
+    "live_transport_enabled",
+    "disclosure"
+  ],
+  "title": "ProviderStatus",
+  "type": "object"
+}
