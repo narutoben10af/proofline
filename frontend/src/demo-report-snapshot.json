@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "snapshot_id": "magicfin-demo-northstar-fy2025",
+  "product": "MagicFin",
+  "company": "Northstar Industrial plc",
+  "period": "FY2025",
+  "reviewed_at": "2026-08-22T10:24:00+08:00",
+  "data_state": "Verified synthetic fixture",
+  "headline_metrics": [
+    { "label": "Revenue", "value": "$2,354.8m", "change": "+5.4% vs FY2024", "source": "Financials_FY2025.xlsx - B5:C5" },
+    { "label": "Operating margin", "value": "18.6%", "change": "+1.2 pp vs FY2024", "source": "Financials_FY2025.xlsx - B8:C8" },
+    { "label": "Current ratio", "value": "1.42x", "change": "-0.08x vs FY2024", "source": "Financials_FY2025.xlsx - Balance sheet" },
+    { "label": "Free-cash-flow margin", "value": "12.8%", "change": "+0.9 pp vs FY2024", "source": "Management_Notes.xlsx - FCF bridge" }
+  ],
+  "trend": [
+    { "period": "FY2022", "revenue_usd_m": 1986.4 },
+    { "period": "FY2023", "revenue_usd_m": 2119.8 },
+    { "period": "FY2024", "revenue_usd_m": 2234.2 },
+    { "period": "FY2025", "revenue_usd_m": 2354.8 }
+  ],
+  "executive_brief": "Reported revenue and operating margin improved in FY2025 while the current ratio softened. The cited workbook supports 5.4% revenue growth; the report narrative states 8.2%.",
+  "material_findings": [
+    "Narrative variance: 8.2% stated versus 5.4% calculated from cited revenue inputs.",
+    "Liquidity movement: current ratio moved from 1.50x to 1.42x year over year.",
+    "Operating margin increased 1.2 percentage points to 18.6%."
+  ],
+  "review_status": "Human review required",
+  "source_mode": "verified_fixture",
+  "source_disclosure": "Verified synthetic fixture; no source refresh or issuer document download occurred.",
+  "limitations": [
+    "Demo fixture only; no issuer files are bundled or uploaded.",
+    "Assistant analysis is scripted, not a live provider response.",
+    "Context only; no causal relationship is asserted.",
+    "This report is evidence support, not financial advice."
+  ]
+}
