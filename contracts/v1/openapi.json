@@ -3724,6 +3724,50 @@
         ]
       }
     },
+    "/api/sessions/{session_id}/analysis": {
+      "post": {
+        "description": "Analyze one authorized, validated PDF/XLSX pair without consulting demo fixtures.",
+        "operationId": "analyze_source_session_api_sessions__session_id__analysis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResponse-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Analyze Source Session",
+        "tags": [
+          "source-library",
+          "analysis"
+        ]
+      }
+    },
     "/api/sessions/{session_id}/files": {
       "get": {
         "operationId": "list_source_files_api_sessions__session_id__files_get",
