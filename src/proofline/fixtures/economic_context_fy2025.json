@@ -1,0 +1,49 @@
+{
+  "companies": {
+    "apple-fy2025": {
+      "company": "Apple Inc.",
+      "reviewed_period": "FY2025 ended 27 September 2025",
+      "trend": {
+        "id": "apple-net-sales-fy2023-fy2025",
+        "company": "Apple Inc.",
+        "indicator": "Total net sales",
+        "unit": "USD millions",
+        "currency": "USD",
+        "points": [
+          {"period":{"start":"2022-09-25","end":"2023-09-30"},"value":"383285","reporting_basis":"Apple consolidated annual net sales","official_source_url":"https://www.apple.com/newsroom/pdfs/fy2024-q4/FY24_Q4_Consolidated_Financial_Statements.pdf"},
+          {"period":{"start":"2023-10-01","end":"2024-09-28"},"value":"391035","reporting_basis":"Apple consolidated annual net sales","official_source_url":"https://www.apple.com/newsroom/pdfs/fy2024-q4/FY24_Q4_Consolidated_Financial_Statements.pdf"},
+          {"period":{"start":"2024-09-29","end":"2025-09-27"},"value":"416161","reporting_basis":"Apple consolidated annual net sales","official_source_url":"https://www.apple.com/newsroom/pdfs/fy2025-q4/FY25_Q4_Consolidated_Financial_Statements.pdf"}
+        ]
+      },
+      "context": [
+        {"id":"apple-us-real-gdp-2025","company":"Apple Inc.","indicator":"U.S. real GDP annual growth","geography":"United States","period":{"start":"2025-01-01","end":"2025-12-31"},"value":"2.1","display_value":"2.1%","unit":"percent year over year","official_source_url":"https://www.bea.gov/sites/default/files/2026-04/gdp4q25-3rd.pdf","published_on":"2026-04-09","retrieved_on":"2026-08-22","relevance":"Broad U.S. activity context for the calendar year overlapping Apple FY2025.","comparability_warning":"Calendar-year national output does not align exactly with Apple fiscal periods or geographic revenue mix.","caveat":"Context only; no causal relationship is asserted.","default_visible":true},
+        {"id":"apple-us-cpi-sep-2025","company":"Apple Inc.","indicator":"CPI-U 12-month change near fiscal close","geography":"United States","period":{"start":"2024-10-01","end":"2025-09-30"},"value":"3.0","display_value":"3.0%","unit":"percent over 12 months","official_source_url":"https://www.bls.gov/news.release/archives/cpi_10242025.htm","published_on":"2025-10-24","retrieved_on":"2026-08-22","relevance":"Consumer-price context measured close to Apple fiscal year-end.","comparability_warning":"CPI-U is a household price index and is not an Apple pricing, cost, or margin measure.","caveat":"Context only; no causal relationship is asserted.","default_visible":true},
+        {"id":"apple-fed-target-sep-2025","company":"Apple Inc.","indicator":"Federal funds target range near fiscal close","geography":"United States","period":{"end":"2025-09-18"},"value":"4.00","display_value":"4.00%-4.25%","unit":"percent target range","official_source_url":"https://www.federalreserve.gov/newsevents/pressreleases/monetary20250917a.htm","published_on":"2025-09-17","retrieved_on":"2026-08-22","relevance":"U.S. policy-rate setting in effect near Apple fiscal year-end.","comparability_warning":"The target range is a policy setting, not Apple borrowing cost or investment yield.","caveat":"Context only; no causal relationship is asserted.","default_visible":true},
+        {"id":"apple-broad-dollar-fy2025","company":"Apple Inc.","indicator":"Nominal broad U.S. dollar index movement","geography":"United States and major trading partners","period":{"start":"2024-09-27","end":"2025-09-26"},"value":"-0.5583","display_value":"-0.56%","unit":"percent movement","official_source_url":"https://fred.stlouisfed.org/data/DTWEXBGS","published_on":"2025-09-29","retrieved_on":"2026-08-22","relevance":"Broad currency-market context over dates close to Apple FY2025 boundaries.","comparability_warning":"The movement is calculated from revisable daily index observations and is not Apple foreign-exchange exposure or impact.","caveat":"Context only; no causal relationship is asserted.","default_visible":true}
+      ]
+    },
+    "pcg-fy2025": {
+      "company": "PETRONAS Chemicals Group Berhad",
+      "reviewed_period": "FY2025 ended 31 December 2025",
+      "trend": {
+        "id": "pcg-revenue-fy2023-fy2025",
+        "company": "PETRONAS Chemicals Group Berhad",
+        "indicator": "Revenue",
+        "unit": "RM millions",
+        "currency": "MYR",
+        "points": [
+          {"period":{"start":"2023-01-01","end":"2023-12-31","duration_weeks":52},"value":"28667","reporting_basis":"PCG consolidated annual revenue","official_source_url":"https://www.petronas.com/pcg/sites/default/files/uploads/content/2026/PCG%20IR2025%20%5BInteractive%20PDF%5D_0.pdf"},
+          {"period":{"start":"2024-01-01","end":"2024-12-31","duration_weeks":52},"value":"30671","reporting_basis":"PCG consolidated annual revenue","official_source_url":"https://www.petronas.com/pcg/sites/default/files/uploads/content/2026/PCG%20IR2025%20%5BInteractive%20PDF%5D_0.pdf"},
+          {"period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"value":"27480","reporting_basis":"PCG consolidated annual revenue","official_source_url":"https://www.petronas.com/pcg/sites/default/files/uploads/content/2026/PCG%20IR2025%20%5BInteractive%20PDF%5D_0.pdf"}
+        ]
+      },
+      "context": [
+        {"id":"pcg-malaysia-real-gdp-2025","company":"PETRONAS Chemicals Group Berhad","indicator":"Malaysia real GDP annual growth","geography":"Malaysia","period":{"start":"2025-01-01","end":"2025-12-31"},"value":"5.2","display_value":"5.2%","unit":"percent year over year","official_source_url":"https://www.dosm.gov.my/portal-main/release-content/gross-domestic-product-2025","published_on":"2026-05-15","retrieved_on":"2026-08-22","relevance":"Broad Malaysian activity context for PCG FY2025.","comparability_warning":"National GDP is broader than PCG markets, operations, customer mix, and fiscal reporting scope.","caveat":"Context only; no causal relationship is asserted.","default_visible":true},
+        {"id":"pcg-malaysia-cpi-2025","company":"PETRONAS Chemicals Group Berhad","indicator":"Malaysia annual CPI","geography":"Malaysia","period":{"start":"2025-01-01","end":"2025-12-31"},"value":"1.4","display_value":"1.4%","unit":"percent annual average change","official_source_url":"https://www.dosm.gov.my/portal-main/release-content/analysis-of-annual-consumer-price-index-malaysia-2025","published_on":"2026-04-29","retrieved_on":"2026-08-22","relevance":"General Malaysian consumer-price context for PCG FY2025.","comparability_warning":"Consumer inflation is not a petrochemical input-price, selling-price, or margin measure.","caveat":"Context only; no causal relationship is asserted.","default_visible":true},
+        {"id":"pcg-malaysia-opr-2025","company":"PETRONAS Chemicals Group Berhad","indicator":"Overnight Policy Rate at year-end","geography":"Malaysia","period":{"end":"2025-12-31"},"value":"2.75","display_value":"2.75%","unit":"percent","official_source_url":"https://www.bnm.gov.my/monetary-stability/opr-decisions","published_on":"2025-11-06","retrieved_on":"2026-08-22","relevance":"Malaysia policy-rate setting in effect at PCG year-end.","comparability_warning":"OPR is not PCG financing cost, cash yield, or weighted average cost of capital.","caveat":"Context only; no causal relationship is asserted.","default_visible":true},
+        {"id":"pcg-usd-myr-2025","company":"PETRONAS Chemicals Group Berhad","indicator":"Year-end USD/MYR indicative movement","geography":"Malaysia","period":{"start":"2024-12-31","end":"2025-12-31"},"value":"-9.2067","display_value":"-9.21%","unit":"percent movement in MYR per USD","official_source_url":"https://www.bnm.gov.my/usd/myr-interbank-intraday-rate","published_on":"2025-12-31","retrieved_on":"2026-08-22","relevance":"Currency-market context using BNM year-end interbank observations.","comparability_warning":"The movement uses indicative year-end observations and is not PCG realised or unrealised foreign-exchange impact.","caveat":"Context only; no causal relationship is asserted.","default_visible":true},
+        {"id":"pcg-brent-average-2025","company":"PETRONAS Chemicals Group Berhad","indicator":"Annual average Brent spot price","geography":"Europe benchmark","period":{"start":"2025-01-01","end":"2025-12-31"},"value":"69.14","display_value":"US$69.14/bbl","unit":"U.S. dollars per barrel","official_source_url":"https://www.eia.gov/dnav/pet/PET_PRI_SPT_S1_A.htm","published_on":"2026-01-05","retrieved_on":"2026-08-22","relevance":"Additional global energy benchmark context for a petrochemicals review.","comparability_warning":"Brent is a benchmark spot average and is not PCG feedstock cost, realised price, or product spread.","caveat":"Context only; no causal relationship is asserted.","default_visible":false}
+      ]
+    }
+  }
+}
