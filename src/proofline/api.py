@@ -26,6 +26,7 @@ from proofline.contracts import (
     SourceSessionStatus,
 )
 from proofline.economic_context import get_company_lens
+from proofline.mcp_server import build_mcp_server, mcp_http_gateway
 from proofline.providers import GemmaProvider
 from proofline.providers.contracts import (
     AssistantRequest,
@@ -150,9 +151,13 @@ async def lifespan(app: FastAPI):
                 source_store.cleanup_expired()
 
     cleanup_task = asyncio.create_task(periodic_cleanup())
+    mcp_http_app = build_mcp_server().streamable_http_app()
+    mcp_http_gateway.active_app = mcp_http_app
     try:
-        yield
+        async with mcp_http_app.router.lifespan_context(mcp_http_app):
+            yield
     finally:
+        mcp_http_gateway.active_app = None
         stop_cleanup.set()
         cleanup_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -488,3 +493,7 @@ def delete_session(session_id: str) -> DeletionReceipt:
     if receipt is None:
         raise HTTPException(status_code=404, detail="session not found")
     return receipt
+
+
+# Keep the existing API routes ahead of this catch-all mount. The mounted MCP app owns /mcp.
+app.mount("/", mcp_http_gateway)
