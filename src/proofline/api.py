@@ -48,6 +48,7 @@ from proofline.reports import (
 from proofline.service import analyze
 from proofline.sessions import SessionStore
 from proofline.source_library import LibraryError, SessionRecord, SourceLibraryStore, Tombstone
+from proofline.supabase_persistence import persistence_selection, source_session_repository
 from proofline.upload_analysis import UploadAnalysisError, analyze_uploaded_evidence
 
 CAPABILITY_COOKIE = "__Host-proofline_capability"
@@ -137,9 +138,11 @@ async def lifespan(app: FastAPI):
         root=settings.source_library_root,
         idle_ttl=timedelta(minutes=settings.source_library_idle_minutes),
         absolute_ttl=timedelta(minutes=settings.source_library_absolute_minutes),
+        repository=source_session_repository(settings),
     )
     source_store.startup_cleanup()
     app.state.source_store = source_store
+    app.state.persistence_selection = persistence_selection(settings)
     stop_cleanup = asyncio.Event()
 
     async def periodic_cleanup() -> None:

@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from uuid import UUID, uuid4
 
 from proofline.config import Settings
+from proofline.source_library import ProcessSessionRepository, SessionRepository
 
 PERSISTENCE_BUCKET = "proofline-source-library"
 
@@ -128,6 +129,29 @@ def persistence_selection(settings: Settings) -> PersistenceSelection:
             "SUPABASE_AUTH_INTEGRATION_REQUIRED" if configured else "SUPABASE_NOT_CONFIGURED"
         ),
     )
+
+
+def source_session_repository(
+    settings: Settings,
+    *,
+    tombstone_ttl: timedelta = timedelta(hours=2),
+    max_tombstones: int = 1_000,
+) -> SessionRepository:
+    """Select the repository used by the existing Source Library boundary.
+
+    The current cookie-capability sessions use opaque ``src-*`` identifiers and
+    have no authenticated Supabase owner. They therefore remain process-local.
+    Selecting Supabase explicitly fails closed instead of silently writing a
+    second, ownerless representation or duplicating upload normalization.
+    """
+
+    selection = persistence_selection(settings)
+    if selection.backend == "process-local":
+        return ProcessSessionRepository(
+            tombstone_ttl=tombstone_ttl,
+            max_tombstones=max_tombstones,
+        )
+    raise PersistenceError(selection.reason_code, 503)
 
 
 class AnalysisPersistenceRepository(Protocol):

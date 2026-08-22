@@ -39,7 +39,10 @@ production readiness.
 
 ## Consequences
 
-The checked-in adapter is production-shaped but intentionally not wired into current API routes.
-This prevents an incomplete Auth setup from weakening the capability-isolated local flow. The
-existing `SessionRepository`, `TemporaryBlobStore` and strict validation service remain the active
-fallback until the activation gates pass.
+The checked-in adapter is production-shaped, and the API now selects the current
+`SessionRepository` through the persistence boundary. That boundary returns the process-local
+repository by default and fails closed for an explicit Supabase selection until Auth can supply a
+trusted owner and UUID session mapping. It does not send current capability-session data remotely.
+The existing `ProcessSessionRepository`, `TemporaryBlobStore` and strict validation service remain
+active until the activation gates pass. The dynamic upload pipeline continues to normalize once;
+future snapshot persistence consumes completed response metadata instead of re-normalizing input.

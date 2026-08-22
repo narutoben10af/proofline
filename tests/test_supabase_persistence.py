@@ -7,6 +7,7 @@ from uuid import UUID
 import pytest
 
 from proofline.config import Settings
+from proofline.source_library import ProcessSessionRepository
 from proofline.supabase_persistence import (
     HttpResult,
     PersistenceError,
@@ -18,6 +19,7 @@ from proofline.supabase_persistence import (
     configured_user_adapters,
     object_path,
     persistence_selection,
+    source_session_repository,
 )
 
 OWNER_A = UUID("10000000-0000-4000-8000-000000000001")
@@ -72,6 +74,21 @@ def test_process_local_is_the_default_and_supabase_is_never_auto_activated() -> 
     assert selection.configured is True
     assert selection.activated is False
     assert selection.reason_code == "SUPABASE_AUTH_INTEGRATION_REQUIRED"
+
+
+def test_source_library_repository_boundary_defaults_local_and_fails_closed_for_supabase() -> None:
+    repository = source_session_repository(Settings(_env_file=None))
+    assert isinstance(repository, ProcessSessionRepository)
+
+    configured = Settings(
+        _env_file=None,
+        source_library_persistence_backend="supabase",
+        supabase_url="https://qvxohnlboefomtjecxdh.supabase.co",
+        supabase_publishable_key="sb_publishable_test-only-placeholder",
+        supabase_secret_key="sb_secret_test-only-placeholder",
+    )
+    with pytest.raises(PersistenceError, match="SUPABASE_AUTH_INTEGRATION_REQUIRED"):
+        source_session_repository(configured)
 
 
 def test_configuration_rejects_secret_or_legacy_key_in_publishable_slot() -> None:
