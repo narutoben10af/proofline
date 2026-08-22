@@ -1,12 +1,27 @@
-from collections.abc import Sequence
 from typing import Protocol
 
-from proofline.contracts import FinancialClaim
+from proofline.providers.contracts import (
+    AssistantRequest,
+    AssistantResult,
+    ClaimExtractionRequest,
+    ClaimExtractionResult,
+    ProviderConnectionTest,
+    ProviderStatus,
+)
 
 
 class ProviderUnavailable(RuntimeError):
     """Raised when an optional hosted extraction provider is not configured."""
 
 
-class ClaimExtractionProvider(Protocol):
-    async def extract_claims(self, page_text: Sequence[str]) -> tuple[FinancialClaim, ...]: ...
+class AnalysisProvider(Protocol):
+    def status(self) -> ProviderStatus: ...
+
+    async def test_connection(self) -> ProviderConnectionTest: ...
+
+    async def assist(self, request: AssistantRequest) -> AssistantResult: ...
+
+    async def extract_claims(self, request: ClaimExtractionRequest) -> ClaimExtractionResult: ...
+
+
+ClaimExtractionProvider = AnalysisProvider

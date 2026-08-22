@@ -185,6 +185,99 @@
         "title": "AnalysisResponse",
         "type": "object"
       },
+      "AssistantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceExcerpt"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider_sent": {
+            "const": true,
+            "title": "Provider Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "prompt",
+          "evidence",
+          "provider_sent"
+        ],
+        "title": "AssistantRequest",
+        "type": "object"
+      },
+      "AssistantResult": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EvidenceCitation"
+            },
+            "maxItems": 12,
+            "title": "Citations",
+            "type": "array"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "disclosure": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProviderState"
+          }
+        },
+        "required": [
+          "state",
+          "provider",
+          "model",
+          "disclosure"
+        ],
+        "title": "AssistantResult",
+        "type": "object"
+      },
       "CalculationInput": {
         "additionalProperties": false,
         "properties": {
@@ -208,6 +301,89 @@
           "observation_id"
         ],
         "title": "CalculationInput",
+        "type": "object"
+      },
+      "ClaimExtractionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/SourcePage"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Pages",
+            "type": "array"
+          },
+          "provider_sent": {
+            "const": true,
+            "title": "Provider Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pages",
+          "provider_sent"
+        ],
+        "title": "ClaimExtractionRequest",
+        "type": "object"
+      },
+      "ClaimExtractionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EvidenceCitation"
+            },
+            "maxItems": 24,
+            "title": "Citations",
+            "type": "array"
+          },
+          "claims": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FinancialClaim-Output"
+            },
+            "maxItems": 24,
+            "title": "Claims",
+            "type": "array"
+          },
+          "disclosure": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProviderState"
+          }
+        },
+        "required": [
+          "state",
+          "provider",
+          "model",
+          "disclosure"
+        ],
+        "title": "ClaimExtractionResult",
         "type": "object"
       },
       "Classification": {
@@ -357,6 +533,70 @@
           "version_label"
         ],
         "title": "DocumentVersion",
+        "type": "object"
+      },
+      "EvidenceCitation": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "source_span_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Source Span Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "source_span_id",
+          "label"
+        ],
+        "title": "EvidenceCitation",
+        "type": "object"
+      },
+      "EvidenceExcerpt": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "source_span_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Source Span Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "source_span_id",
+          "text"
+        ],
+        "title": "EvidenceExcerpt",
         "type": "object"
       },
       "ExceptionalState": {
@@ -1217,6 +1457,125 @@
         "title": "ProcessingError",
         "type": "object"
       },
+      "ProviderConnectionTest": {
+        "additionalProperties": false,
+        "properties": {
+          "disclosure": {
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "reachable": {
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "not_configured",
+              "ready",
+              "offline",
+              "error"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reachable",
+          "state",
+          "disclosure"
+        ],
+        "title": "ProviderConnectionTest",
+        "type": "object"
+      },
+      "ProviderError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "not_configured",
+              "offline",
+              "provider_error",
+              "unsupported_prompt"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "ProviderError",
+        "type": "object"
+      },
+      "ProviderState": {
+        "enum": [
+          "not_configured",
+          "loading",
+          "completed",
+          "offline",
+          "error",
+          "fallback"
+        ],
+        "title": "ProviderState",
+        "type": "string"
+      },
+      "ProviderStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "disclosure": {
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "document_content_sent": {
+            "const": false,
+            "default": false,
+            "title": "Document Content Sent",
+            "type": "boolean"
+          },
+          "live_transport_enabled": {
+            "title": "Live Transport Enabled",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "not_configured",
+              "ready",
+              "fixture"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "provider",
+          "model",
+          "live_transport_enabled",
+          "disclosure"
+        ],
+        "title": "ProviderStatus",
+        "type": "object"
+      },
       "SessionStatus": {
         "additionalProperties": false,
         "properties": {
@@ -1298,6 +1657,37 @@
           "cached_output_status"
         ],
         "title": "SessionStatus",
+        "type": "object"
+      },
+      "SourcePage": {
+        "additionalProperties": false,
+        "properties": {
+          "page": {
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "source_span_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Source Span Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "source_span_id",
+          "text"
+        ],
+        "title": "SourcePage",
         "type": "object"
       },
       "SourceSpan": {
@@ -1504,6 +1894,130 @@
         "summary": "Create Analysis",
         "tags": [
           "analysis"
+        ]
+      }
+    },
+    "/api/v1/assistant": {
+      "post": {
+        "operationId": "create_assistant_response_api_v1_assistant_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Assistant Response",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/extractions": {
+      "post": {
+        "operationId": "create_claim_extraction_api_v1_extractions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimExtractionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimExtractionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Claim Extraction",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/model": {
+      "get": {
+        "operationId": "model_provider_status_api_v1_providers_model_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Model Provider Status",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/model/test": {
+      "post": {
+        "operationId": "test_model_provider_connection_api_v1_providers_model_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnectionTest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Model Provider Connection",
+        "tags": [
+          "providers"
         ]
       }
     },

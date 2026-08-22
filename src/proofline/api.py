@@ -13,6 +13,14 @@ from proofline.contracts import (
     SessionStatus,
 )
 from proofline.providers import GemmaProvider
+from proofline.providers.contracts import (
+    AssistantRequest,
+    AssistantResult,
+    ClaimExtractionRequest,
+    ClaimExtractionResult,
+    ProviderConnectionTest,
+    ProviderStatus,
+)
 from proofline.service import analyze
 from proofline.sessions import SessionStore
 
@@ -20,8 +28,8 @@ from proofline.sessions import SessionStore
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    app.state.claim_provider = GemmaProvider(
-        api_key=settings.gemini_api_key,
+    app.state.analysis_provider = GemmaProvider(
+        api_key=settings.google_api_key,
         model=settings.gemma_model,
         timeout_seconds=settings.gemini_request_timeout_seconds,
         max_retries=settings.gemini_max_retries,
@@ -42,8 +50,28 @@ session_store = SessionStore()
 def health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthResponse:
     return HealthResponse(
         model_provider=settings.model_provider,
-        model_configured=bool(settings.gemini_api_key),
+        model_configured=bool(settings.google_api_key),
     )
+
+
+@app.get("/api/v1/providers/model", response_model=ProviderStatus, tags=["providers"])
+def model_provider_status() -> ProviderStatus:
+    return app.state.analysis_provider.status()
+
+
+@app.post("/api/v1/providers/model/test", response_model=ProviderConnectionTest, tags=["providers"])
+async def test_model_provider_connection() -> ProviderConnectionTest:
+    return await app.state.analysis_provider.test_connection()
+
+
+@app.post("/api/v1/assistant", response_model=AssistantResult, tags=["providers"])
+async def create_assistant_response(request: AssistantRequest) -> AssistantResult:
+    return await app.state.analysis_provider.assist(request)
+
+
+@app.post("/api/v1/extractions", response_model=ClaimExtractionResult, tags=["providers"])
+async def create_claim_extraction(request: ClaimExtractionRequest) -> ClaimExtractionResult:
+    return await app.state.analysis_provider.extract_claims(request)
 
 
 @app.post("/api/v1/analyses", response_model=AnalysisResponse, tags=["analysis"])

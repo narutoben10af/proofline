@@ -15,6 +15,11 @@ made within v1 only when old consumers continue to validate.
   state. This first slice records intake metadata only; it does not accept document bytes.
 - `DELETE /api/v1/sessions/{id}` deletes process-local session metadata and returns a receipt whose
   narrow scope is explicit. It makes no deletion claim about source systems or bytes never stored.
+- `GET /api/v1/providers/model` exposes redacted readiness. `POST /api/v1/providers/model/test`
+  performs a no-document connection probe when configured. Neither reveals a credential or raw
+  upstream error.
+- `POST /api/v1/assistant` and `POST /api/v1/extractions` expose bounded, provider-neutral contracts.
+  The live adapter returns `not_configured`, `offline`, `error`, or a locally validated cited answer.
 
 Decimal values cross the JSON boundary as strings so JavaScript consumers do not silently lose
 precision. Dates use ISO 8601. Unknown fields are rejected. Source pages are one-based and workbook
@@ -84,3 +89,12 @@ economic/reporting track:
   finding IDs, context IDs, and limitations. Its contract explicitly excludes forecasts.
 
 No macro dataset, persistence, PDF renderer, or forecasting behavior is implemented in this PR.
+
+## Hosted model boundary
+
+See [Model-provider boundary](model-provider.md). Source-bearing requests require the literal
+`provider_sent: true`; it is a machine-auditable declaration, not an inferred consent claim.
+Assistant answers require citations, and every extracted claim must reference a cited source span.
+Unknown fields, oversized prompts/pages/outputs, unsupported models, and excessive timeout/retry
+configuration fail closed. The server transport has no filesystem or database access and receives
+only evidence explicitly included in the bounded request.

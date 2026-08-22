@@ -1,0 +1,308 @@
+{
+  "$defs": {
+    "EvidenceCitation": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "source_span_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Source Span Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source_span_id",
+        "label"
+      ],
+      "title": "EvidenceCitation",
+      "type": "object"
+    },
+    "FinancialClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "asserted_direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "up",
+                "down",
+                "flat"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asserted Direction"
+        },
+        "asserted_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Asserted Value"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "entity": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Entity"
+        },
+        "extraction_warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Extraction Warnings",
+          "type": "array"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "metric_id": {
+          "$ref": "#/$defs/MetricId"
+        },
+        "period": {
+          "$ref": "#/$defs/Period"
+        },
+        "source_span_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Source Span Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "metric_id",
+        "period",
+        "source_span_id"
+      ],
+      "title": "FinancialClaim",
+      "type": "object"
+    },
+    "MetricId": {
+      "enum": [
+        "revenue_growth_yoy",
+        "operating_margin",
+        "current_ratio",
+        "fcf_margin"
+      ],
+      "title": "MetricId",
+      "type": "string"
+    },
+    "Period": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_weeks": {
+          "anyOf": [
+            {
+              "maximum": 54,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Weeks"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        }
+      },
+      "required": [
+        "end"
+      ],
+      "title": "Period",
+      "type": "object"
+    },
+    "ProviderError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "not_configured",
+            "offline",
+            "provider_error",
+            "unsupported_prompt"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "ProviderError",
+      "type": "object"
+    },
+    "ProviderState": {
+      "enum": [
+        "not_configured",
+        "loading",
+        "completed",
+        "offline",
+        "error",
+        "fallback"
+      ],
+      "title": "ProviderState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "citations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/EvidenceCitation"
+      },
+      "maxItems": 24,
+      "title": "Citations",
+      "type": "array"
+    },
+    "claims": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FinancialClaim"
+      },
+      "maxItems": 24,
+      "title": "Claims",
+      "type": "array"
+    },
+    "disclosure": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Disclosure",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProviderError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/ProviderState"
+    }
+  },
+  "required": [
+    "state",
+    "provider",
+    "model",
+    "disclosure"
+  ],
+  "title": "ClaimExtractionResult",
+  "type": "object"
+}

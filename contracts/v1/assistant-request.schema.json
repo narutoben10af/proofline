@@ -1,0 +1,66 @@
+{
+  "$defs": {
+    "EvidenceExcerpt": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "source_span_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Source Span Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source_span_id",
+        "text"
+      ],
+      "title": "EvidenceExcerpt",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/EvidenceExcerpt"
+      },
+      "maxItems": 12,
+      "minItems": 1,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "prompt": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "provider_sent": {
+      "const": true,
+      "title": "Provider Sent",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "prompt",
+    "evidence",
+    "provider_sent"
+  ],
+  "title": "AssistantRequest",
+  "type": "object"
+}
