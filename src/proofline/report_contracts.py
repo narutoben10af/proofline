@@ -45,18 +45,10 @@ VERIFIED_CACHED_SOURCE_DISCLOSURE = (
 CACHED_BANNER = "VERIFIED CACHED ANALYSIS - review the cache disclosure below."
 LIVE_BANNER = "CALCULATED ANALYSIS - rendered from the supplied immutable bundle."
 
-_OFFICIAL_HOSTS = {
-    "apple.com",
-    "bea.gov",
-    "bls.gov",
-    "bnm.gov.my",
-    "dosm.gov.my",
-    "eia.gov",
-    "federalreserve.gov",
-    "financialmarkets.bnm.gov.my",
-    "fred.stlouisfed.org",
-    "petronas.com",
-}
+GENERIC_CONTEXT_RELEVANCE = "Reviewed macroeconomic context for the reporting period."
+GENERIC_CONTEXT_COMPARABILITY = (
+    "The context geography or period may not match the reporting entity."
+)
 _REGISTERED_COMPANIES = {
     "apple-fy2025": "Apple Inc.",
     "example-group-fy2025": "Example Group",
@@ -66,16 +58,17 @@ _ALLOWED_LIMITATIONS = frozenset({"Prototype output requires human review."})
 _ALLOWED_DOCUMENT_VERSION_LABELS = frozenset({"FY2023", "FY2024", "FY2025"})
 _ALLOWED_TREND_VOCABULARY = frozenset(
     {
-        ("Apple Inc.", "Total net sales", "USD millions", "Apple consolidated annual net sales"),
-        ("Example Group", "Revenue", "USD millions", "Consolidated annual revenue"),
-        (
-            "PETRONAS Chemicals Group Berhad",
-            "Revenue",
-            "RM millions",
-            "PCG consolidated annual revenue",
-        ),
+        ("Total net sales", "Consolidated annual net sales"),
+        ("Revenue", "Consolidated annual revenue"),
     }
 )
+
+_PRIMARY_CONCEPT_LABELS = {
+    "revenue": "Revenue",
+    "operating_profit": "Operating profit",
+    "current_assets": "Current assets",
+    "operating_cash_flow": "Operating cash flow",
+}
 
 
 class SourceMode(StrEnum):
@@ -86,19 +79,30 @@ class SourceMode(StrEnum):
 def _require_official_https(value: str) -> str:
     parsed = urlparse(value)
     host = (parsed.hostname or "").lower()
-    if parsed.scheme != "https" or not any(
-        host == allowed or host.endswith(f".{allowed}") for allowed in _OFFICIAL_HOSTS
+    if (
+        parsed.scheme != "https"
+        or not host
+        or host == "localhost"
+        or host.endswith(".local")
+        or "." not in host
     ):
-        raise ValueError("official source URL must use HTTPS on an approved official domain")
+        raise ValueError("confirmed official source URL must use public HTTPS")
     return value
+
+
+def generic_company_id(company: str) -> str:
+    """Stable issuer identity for uploaded statements outside the demo fixture registry."""
+
+    normalized = " ".join(company.casefold().split()).encode("utf-8")
+    return f"issuer-{hashlib.sha256(normalized).hexdigest()[:20]}"
 
 
 def _require_company_id_matches_name(company_id: str, company: str) -> None:
     registered_company = _REGISTERED_COMPANIES.get(company_id)
-    if registered_company is None:
-        raise ValueError("company_id is not in the reviewed company registry")
-    if registered_company.casefold() != company.casefold():
+    if registered_company is not None and registered_company.casefold() != company.casefold():
         raise ValueError("company_id does not match the registered company")
+    if registered_company is None and company_id != generic_company_id(company):
+        raise ValueError("company_id must be the deterministic uploaded-issuer identifier")
 
 
 def report_claim_text(claim: FinancialClaim) -> str:
@@ -178,6 +182,7 @@ class ResolvedEconomicContextPoint(FrozenModel):
     display_value: str = Field(min_length=1, max_length=64)
     unit: str = Field(min_length=1, max_length=64)
     official_source_url: str
+    official_source_confirmed: Literal[True] = True
     published_on: date
     retrieved_on: date
     relevance: str = Field(min_length=1, max_length=1_000)
@@ -193,8 +198,13 @@ class ResolvedEconomicContextPoint(FrozenModel):
         if self.published_on > self.retrieved_on:
             raise ValueError("publication date cannot be after retrieval date")
         approved = _approved_context_narratives().get(self.id)
-        if approved is None or _context_narrative(self) != approved:
-            raise ValueError("context narrative is not in the reviewed context registry")
+        if approved is not None and _context_narrative(self) != approved:
+            raise ValueError("fixture context narrative differs from the reviewed registry")
+        if approved is None and (
+            self.relevance != GENERIC_CONTEXT_RELEVANCE
+            or self.comparability_warning != GENERIC_CONTEXT_COMPARABILITY
+        ):
+            raise ValueError("uploaded-issuer context must use the fixed reviewed narrative")
         return self
 
 
@@ -235,10 +245,20 @@ class FinancialTrendSeries(FrozenModel):
         durations = {point.period.duration_weeks for point in self.points}
         if len(durations) != 1:
             raise ValueError("trend points must use comparable period durations")
-        vocabulary = (self.company, self.indicator, self.unit, next(iter(bases)))
+        vocabulary = (self.indicator, next(iter(bases)))
         if vocabulary not in _ALLOWED_TREND_VOCABULARY:
             raise ValueError("trend labels are not in the reviewed trend vocabulary")
         return self
+
+
+class InvestorReportProfile(FrozenModel):
+    """ID-only presentation choices; all displayed values resolve to hashed analysis evidence."""
+
+    reporting_period: Period
+    primary_observation_ids: tuple[Identifier, ...] = Field(min_length=4, max_length=4)
+    secondary_metric_result_ids: tuple[Identifier, ...] = Field(min_length=4, max_length=4)
+    reviewer_state: Literal["reviewed"] = "reviewed"
+    forecast: None = None
 
 
 class CompanyLens(FrozenModel):
@@ -272,8 +292,9 @@ class ReportRenderBundle(FrozenModel):
     company: str = Field(min_length=1, max_length=256)
     analysis: AnalysisResponse
     snapshot: ReportSnapshot
+    report_profile: InvestorReportProfile
     trend: FinancialTrendSeries | None = None
-    economic_context: tuple[ResolvedEconomicContextPoint, ...] = Field(min_length=1, max_length=8)
+    economic_context: tuple[ResolvedEconomicContextPoint, ...] = Field(default=(), max_length=8)
     source_mode: SourceMode
     source_disclosure: str = Field(min_length=1, max_length=1_000)
     data_handling_disclosure: Literal[
@@ -349,6 +370,30 @@ class ReportRenderBundle(FrozenModel):
             unknown = set(result.input_observation_ids) - observations.keys()
             if unknown:
                 raise ValueError(f"unknown metric input observation IDs: {sorted(unknown)}")
+
+        primary_ids = self.report_profile.primary_observation_ids
+        if len(primary_ids) != len(set(primary_ids)):
+            raise ValueError("primary metric observation IDs must be unique")
+        if set(primary_ids) - observations.keys():
+            raise ValueError("primary metric observation IDs must resolve to analysis evidence")
+        primary = tuple(observations[item] for item in primary_ids)
+        if {item.concept for item in primary} != set(_PRIMARY_CONCEPT_LABELS):
+            raise ValueError("primary metrics must use the four reviewed financial concepts")
+        if any(item.period.end != self.report_profile.reporting_period.end for item in primary):
+            raise ValueError("primary metric periods must match the report period end")
+        if any(item.entity_scope.casefold() != self.company.casefold() for item in primary):
+            raise ValueError("primary metric entity scope must match bundle company")
+        primary_currencies = {item.currency for item in primary}
+        if None in primary_currencies or len(primary_currencies) != 1:
+            raise ValueError("primary metrics must use one explicit currency")
+        secondary_ids = self.report_profile.secondary_metric_result_ids
+        if len(secondary_ids) != len(set(secondary_ids)):
+            raise ValueError("secondary ratio result IDs must be unique")
+        if set(secondary_ids) - results.keys():
+            raise ValueError("secondary ratio result IDs must resolve to analysis results")
+        secondary_metric_ids = tuple(results[item].metric_id for item in secondary_ids)
+        if len(secondary_metric_ids) != len(set(secondary_metric_ids)):
+            raise ValueError("secondary ratios must use unique metric definitions")
         for finding in findings.values():
             if finding.claim_id not in claims:
                 raise ValueError(f"unknown finding claim_id: {finding.claim_id}")
@@ -427,11 +472,30 @@ class ReportRenderBundle(FrozenModel):
                     )
                 if point.period.end > self.snapshot.reviewed_at.date():
                     raise ValueError("trend cannot include a period after the review date")
+            primary_currency = next(iter(primary_currencies))
+            if self.trend.currency != primary_currency:
+                raise ValueError("trend currency must match primary metric currency")
         if self.snapshot.title != f"{self.company} reviewed evidence report":
             raise ValueError("snapshot title must use the fixed company-bound report title")
         if any(value not in _ALLOWED_LIMITATIONS for value in self.snapshot.limitations):
             raise ValueError("snapshot limitation is not in the reviewed report vocabulary")
         return self
+
+
+def primary_metric_label(concept: str) -> str:
+    try:
+        return _PRIMARY_CONCEPT_LABELS[concept]
+    except KeyError as error:
+        raise ValueError("primary metric concept is not in the reviewed vocabulary") from error
+
+
+def secondary_metric_label(metric_id: MetricId) -> str:
+    return {
+        MetricId.REVENUE_GROWTH_YOY: "Revenue growth year over year",
+        MetricId.OPERATING_MARGIN: "Operating margin",
+        MetricId.CURRENT_RATIO: "Current ratio",
+        MetricId.FCF_MARGIN: "Project-defined FCF margin",
+    }[metric_id]
 
 
 def _decimal_string(value: Decimal) -> str:

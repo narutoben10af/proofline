@@ -225,6 +225,12 @@
           "title": "Indicator",
           "type": "string"
         },
+        "official_source_confirmed": {
+          "const": true,
+          "default": true,
+          "title": "Official Source Confirmed",
+          "type": "boolean"
+        },
         "official_source_url": {
           "title": "Official Source Url",
           "type": "string"
