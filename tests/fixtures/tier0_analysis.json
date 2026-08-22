@@ -1,0 +1,32 @@
+{
+  "request": {
+    "schema_version": "1.0.0",
+    "claims": [
+      {"id":"claim-growth","text":"Revenue grew 25.1%.","entity":"Example Group","metric_id":"revenue_growth_yoy","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"asserted_value":"0.251","unit":"ratio","currency":"USD","source_span_id":"span-pdf-1","extraction_warnings":[]},
+      {"id":"claim-margin","text":"Operating margin was 25%.","entity":"Example Group","metric_id":"operating_margin","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"asserted_value":"0.25","unit":"ratio","currency":"USD","source_span_id":"span-pdf-2","extraction_warnings":[]},
+      {"id":"claim-current","text":"Current ratio was 2.0.","entity":"Example Group","metric_id":"current_ratio","period":{"end":"2025-12-31"},"asserted_value":"2.0","unit":"ratio","source_span_id":"span-pdf-3","extraction_warnings":[]},
+      {"id":"claim-fcf","text":"Project-defined FCF margin was 20%.","entity":"Example Group","metric_id":"fcf_margin","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"asserted_value":"0.20","unit":"ratio","currency":"USD","source_span_id":"span-pdf-4","extraction_warnings":[]},
+      {"id":"claim-direction","text":"Revenue increased.","entity":"Example Group","metric_id":"revenue_growth_yoy","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"asserted_direction":"up","unit":"ratio","currency":"USD","source_span_id":"span-pdf-5","extraction_warnings":[]}
+    ],
+    "observations": [
+      {"id":"revenue-current","source_span_id":"span-xlsx-B2","concept":"revenue","numeric_value":"100","display_value":"100","unit":"USD millions","currency":"USD","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"entity_scope":"Example Group","restated":false,"sign_convention":"positive","fixture_status":"derived"},
+      {"id":"revenue-prior","source_span_id":"span-xlsx-C2","concept":"revenue","numeric_value":"80","display_value":"80","unit":"USD millions","currency":"USD","period":{"start":"2024-01-01","end":"2024-12-31","duration_weeks":52},"entity_scope":"Example Group","restated":false,"sign_convention":"positive","fixture_status":"derived"},
+      {"id":"operating-profit","source_span_id":"span-xlsx-B3","concept":"operating_profit","numeric_value":"20","display_value":"20","unit":"USD millions","currency":"USD","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"entity_scope":"Example Group","restated":false,"sign_convention":"positive","fixture_status":"derived"},
+      {"id":"current-assets","source_span_id":"span-xlsx-B4","concept":"current_assets","numeric_value":"50","display_value":"50","unit":"USD millions","currency":"USD","period":{"end":"2025-12-31"},"entity_scope":"Example Group","restated":false,"sign_convention":"positive","fixture_status":"derived"},
+      {"id":"current-liabilities","source_span_id":"span-xlsx-B5","concept":"current_liabilities","numeric_value":"25","display_value":"25","unit":"USD millions","currency":"USD","period":{"end":"2025-12-31"},"entity_scope":"Example Group","restated":false,"sign_convention":"positive","fixture_status":"derived"},
+      {"id":"operating-cash-flow","source_span_id":"span-xlsx-B6","concept":"operating_cash_flow","numeric_value":"30","display_value":"30","unit":"USD millions","currency":"USD","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"entity_scope":"Example Group","restated":false,"sign_convention":"positive","fixture_status":"derived"},
+      {"id":"capex","source_span_id":"span-xlsx-B7","concept":"capex","numeric_value":"10","display_value":"(10)","unit":"USD millions","currency":"USD","period":{"start":"2025-01-01","end":"2025-12-31","duration_weeks":52},"entity_scope":"Example Group","restated":false,"sign_convention":"cash_outflow_positive","fixture_status":"derived"}
+    ],
+    "items": [
+      {"claim_id":"claim-growth","calculation_plan":{"metric_id":"revenue_growth_yoy","inputs":[{"role":"revenue_current","observation_id":"revenue-current"},{"role":"revenue_prior","observation_id":"revenue-prior"}]}},
+      {"claim_id":"claim-margin","calculation_plan":{"metric_id":"operating_margin","inputs":[{"role":"operating_profit","observation_id":"operating-profit"},{"role":"revenue","observation_id":"revenue-current"}]}},
+      {"claim_id":"claim-current","calculation_plan":{"metric_id":"current_ratio","inputs":[{"role":"current_assets","observation_id":"current-assets"},{"role":"current_liabilities","observation_id":"current-liabilities"}]}},
+      {"claim_id":"claim-fcf","calculation_plan":{"metric_id":"fcf_margin","inputs":[{"role":"operating_cash_flow","observation_id":"operating-cash-flow"},{"role":"capex","observation_id":"capex"},{"role":"revenue","observation_id":"revenue-current"}]}},
+      {"claim_id":"claim-direction","calculation_plan":{"metric_id":"revenue_growth_yoy","inputs":[{"role":"revenue_current","observation_id":"revenue-current"},{"role":"revenue_prior","observation_id":"revenue-prior"}]}}
+    ]
+  },
+  "expected": {
+    "results": ["0.25", "0.2", "2", "0.2", "0.25"],
+    "classifications": ["supported", "contradicted", "supported", "supported", "uncertain"]
+  }
+}

@@ -19,7 +19,10 @@ The product is designed around the DevLeague Lab 1 brief: combine financial PDFs
 
 ## Status
 
-Repository foundation and planning stage. See [PLAN.md](PLAN.md) for the researched prototype decisions, remaining pre-build decisions, and long-term placeholders.
+The repository now includes a minimal contract-first FastAPI backend. Versioned JSON contracts,
+four deterministic Tier 0 metrics, conservative classification, and fixture-driven tests are
+implemented. Parsing and live hosted-model transport remain intentionally stubbed; see the
+[API contract notes](docs/api-contracts.md) for the stable frontend boundary and limitations.
 
 ## Intended demo flow
 
@@ -69,7 +72,38 @@ Only public hackathon fixtures may be sent to hosted Gemma 4. According to the c
 
 ## Getting started
 
-The extraction and model path is selected, but the UI/application runtime and runnable commands are not. They will be documented after those remaining decisions and dependencies are validated. Until then, use `PLAN.md` and `docs/architecture/` as the source of truth for project direction.
+Python 3.12 is the tested runtime. Create an isolated environment, install the exact direct
+dependencies, run the tests, and start the API:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install -r requirements.lock
+PYTHONPATH=src .venv/bin/python -m pytest
+PYTHONPATH=src .venv/bin/python -m uvicorn proofline.api:app --reload
+```
+
+Open `http://127.0.0.1:8000/docs`, check `GET /health`, or submit the request portion of
+`tests/fixtures/tier0_analysis.json` to `POST /api/v1/analyses`. Regenerate checked-in schemas with:
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/export_contracts.py
+```
+
+`GEMINI_API_KEY` is optional and tests never require a live model. The v1 provider defaults to
+configured Gemma 4 but intentionally stops before network transport; it is a narrow interface for a
+later reviewed adapter.
+
+### Current limitations
+
+- Inputs must already be normalized facts with provenance IDs; PDF/workbook adapters are protocols,
+  not broad parsers yet.
+- Only the four Tier 0 metrics are accepted. Arithmetic uses Python `Decimal` and typed allowlisted
+  plans; no model-generated code or expressions are executed.
+- Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
+- There is no database, upload/session lifecycle, OCR, hosted model call, frontend, or production
+  privacy/compliance claim in this slice.
+- `requirements.lock` pins direct dependencies for repeatable hackathon setup but is not a fully
+  resolved cross-platform transitive lock.
 
 ## Contributing
 

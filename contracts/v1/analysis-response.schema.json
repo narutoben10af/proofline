@@ -1,0 +1,246 @@
+{
+  "$defs": {
+    "Classification": {
+      "enum": [
+        "supported",
+        "uncertain",
+        "contradicted"
+      ],
+      "title": "Classification",
+      "type": "string"
+    },
+    "ExceptionalState": {
+      "enum": [
+        "missing_input",
+        "incomparable",
+        "zero_or_negative_denominator",
+        "unresolved_sign",
+        "invalid_plan"
+      ],
+      "title": "ExceptionalState",
+      "type": "string"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "claim_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "classification": {
+          "$ref": "#/$defs/Classification"
+        },
+        "evidence_source_span_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "title": "Evidence Source Span Ids",
+          "type": "array"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "metric_result_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Metric Result Id",
+          "type": "string"
+        },
+        "policy_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        },
+        "suggested_investigation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggested Investigation"
+        },
+        "tolerance": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tolerance"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "claim_id",
+        "metric_result_id",
+        "classification",
+        "rationale",
+        "evidence_source_span_ids"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "MetricId": {
+      "enum": [
+        "revenue_growth_yoy",
+        "operating_margin",
+        "current_ratio",
+        "fcf_margin"
+      ],
+      "title": "MetricId",
+      "type": "string"
+    },
+    "MetricResult": {
+      "additionalProperties": false,
+      "properties": {
+        "exceptional_state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExceptionalState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "formula_id": {
+          "title": "Formula Id",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "input_observation_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "title": "Input Observation Ids",
+          "type": "array"
+        },
+        "metric_id": {
+          "$ref": "#/$defs/MetricId"
+        },
+        "registry_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Registry Version",
+          "type": "string"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "metric_id",
+        "formula_id",
+        "input_observation_ids"
+      ],
+      "title": "MetricResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "metric_registry_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Metric Registry Version",
+      "type": "string"
+    },
+    "metric_results": {
+      "items": {
+        "$ref": "#/$defs/MetricResult"
+      },
+      "title": "Metric Results",
+      "type": "array"
+    },
+    "policy_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "metric_results",
+    "findings"
+  ],
+  "title": "AnalysisResponse",
+  "type": "object"
+}
