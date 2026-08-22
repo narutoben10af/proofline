@@ -12,6 +12,7 @@ import stat
 import tempfile
 import time
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -20,8 +21,18 @@ from typing import Protocol
 from xml.etree import ElementTree
 
 from fastapi import UploadFile
-from pypdf import PdfReader
-from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject
+from pypdf import PdfReader, PdfWriter
+from pypdf import filters as pdf_filters
+from pypdf.errors import LimitReachedError
+from pypdf.generic import (
+    ArrayObject,
+    Destination,
+    DictionaryObject,
+    IndirectObject,
+    NameObject,
+    StreamObject,
+    TextStringObject,
+)
 
 from proofline.contracts import (
     RemovalCount,
@@ -35,6 +46,14 @@ PDF_MIME = "application/pdf"
 XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 CHUNK_SIZE = 64 * 1024
 PDF_PROBE_LOCK = Lock()
+PDF_SANITIZER_VERSION = "static-pages-v1"
+PDF_SANITIZER_WARNING = (
+    "Interactive PDF features were removed; processing uses a static page-only derivative."
+)
+PDF_MAX_GRAPH_VALUES = 200_000
+PDF_MAX_DECODED_STREAM_BYTES = 10 * 1024 * 1024
+PDF_MAX_TOTAL_DECODED_STREAM_BYTES = 64 * 1024 * 1024
+PDF_LIBRARY_DECOMPRESSION_LIMIT = 16 * 1024 * 1024
 ROOT_MARKER = ".proofline-source-library-root"
 ROOT_MARKER_VALUE = "proofline temporary source library v1\n"
 SESSION_DIRECTORY_PATTERN = re.compile(r"^src-[A-Za-z0-9_-]{20,}$")
@@ -51,6 +70,22 @@ class LibraryError(Exception):
 class StoredFile:
     metadata: SourceFileMetadata
     path: Path
+    original_path: Path | None = None
+    sanitization: PdfSanitizationRecord | None = None
+
+
+@dataclass(frozen=True)
+class PdfSanitizationRecord:
+    sanitizer_version: str
+    original_sha256: str
+    derivative_sha256: str
+    warning: str
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    derivative_path: Path | None = None
+    sanitization: PdfSanitizationRecord | None = None
 
 
 @dataclass
@@ -106,7 +141,7 @@ class BlobStore(Protocol):
 class ValidationService(Protocol):
     """Bounded structural validation seam; formulas and source content are never executed."""
 
-    def validate(self, role: str, path: Path) -> None: ...
+    def validate(self, role: str, path: Path) -> ValidationResult | None: ...
 
 
 class ProcessSessionRepository:
@@ -261,7 +296,7 @@ class SourceLibraryStore:
         absolute_ttl: timedelta = timedelta(hours=2),
         max_pdf_bytes: int = 20 * 1024 * 1024,
         max_xlsx_bytes: int = 10 * 1024 * 1024,
-        probe_timeout_seconds: float = 5.0,
+        probe_timeout_seconds: float = 15.0,
         tombstone_ttl: timedelta = timedelta(hours=2),
         max_tombstones: int = 1_000,
         repository: SessionRepository | None = None,
@@ -386,6 +421,8 @@ class SourceLibraryStore:
             file_id: StoredFile(
                 metadata=stored.metadata.model_copy(update={"expires_at": expiry}),
                 path=stored.path,
+                original_path=stored.original_path,
+                sanitization=stored.sanitization,
             )
             for file_id, stored in record.files.items()
         }
@@ -433,6 +470,8 @@ class SourceLibraryStore:
         file_id = f"file-{secrets.token_urlsafe(18)}"
         partial = self.blobs.partial_path(record.directory, file_id)
         final = partial.with_suffix(expected_suffix)
+        original: Path | None = None
+        derivative: Path | None = None
         with record.lock:
             self._ensure_active(record)
             if record.state != "OPEN":
@@ -449,7 +488,13 @@ class SourceLibraryStore:
                         target.write(chunk)
                 if byte_count == 0:
                     raise LibraryError("FILE_EMPTY")
-                self.validation.validate(role, partial)
+                validation = self.validation.validate(role, partial)
+                sanitization = validation.sanitization if validation else None
+                if validation and validation.derivative_path:
+                    derivative = validation.derivative_path
+                    original = partial.with_suffix(".original")
+                    partial.replace(original)
+                    derivative.replace(partial)
                 self._ensure_active(record)
                 final = self.blobs.commit(partial, expected_suffix)
                 now = datetime.now(UTC)
@@ -464,33 +509,47 @@ class SourceLibraryStore:
                     role=role,
                     expires_at=self._expiry(record),
                 )
-                record.files[file_id] = StoredFile(metadata=metadata, path=final)
+                record.files[file_id] = StoredFile(
+                    metadata=metadata,
+                    path=final,
+                    original_path=original,
+                    sanitization=sanitization,
+                )
                 return metadata
             except LibraryError:
                 self.blobs.delete_file(partial)
                 self.blobs.delete_file(final)
+                if original is not None:
+                    self.blobs.delete_file(original)
+                if derivative is not None:
+                    self.blobs.delete_file(derivative)
                 raise
             except Exception as error:
                 self.blobs.delete_file(partial)
                 self.blobs.delete_file(final)
+                if original is not None:
+                    self.blobs.delete_file(original)
+                if derivative is not None:
+                    self.blobs.delete_file(derivative)
                 raise LibraryError("FILE_VALIDATION_FAILED") from error
             finally:
                 await upload.close()
 
-    def validate(self, role: str, path: Path) -> None:
+    def validate(self, role: str, path: Path) -> ValidationResult | None:
         started = time.monotonic()
         if role == "report_pdf":
-            self._probe_pdf(path, started)
+            return self._probe_pdf(path, started)
         elif role == "workbook":
             self._probe_xlsx(path, started)
         else:
             raise LibraryError("ROLE_INVALID")
+        return None
 
     def _check_timeout(self, started: float) -> None:
         if time.monotonic() - started > self.probe_timeout_seconds:
             raise LibraryError("VALIDATION_TIMEOUT")
 
-    def _probe_pdf(self, path: Path, started: float) -> None:
+    def _probe_pdf(self, path: Path, started: float) -> ValidationResult:
         with path.open("rb") as source:
             header = source.read(8)
             source.seek(max(0, path.stat().st_size - 2048))
@@ -502,18 +561,51 @@ class SourceLibraryStore:
             previous_handlers = logger.handlers
             previous_level = logger.level
             previous_propagate = logger.propagate
+            previous_decompression_limit = pdf_filters.ZLIB_MAX_OUTPUT_LENGTH
             logger.handlers = [logging.NullHandler()]
             logger.setLevel(logging.CRITICAL + 1)
             logger.propagate = False
+            pdf_filters.ZLIB_MAX_OUTPUT_LENGTH = PDF_LIBRARY_DECOMPRESSION_LIMIT
             try:
-                self._probe_pdf_structure(path, started)
+                requires_sanitization = self._probe_pdf_structure(path, started)
+                if not requires_sanitization:
+                    self._check_timeout(started)
+                    return ValidationResult()
+                derivative = self._sanitize_pdf(path, started)
+                try:
+                    self._probe_pdf_structure(
+                        derivative,
+                        started,
+                        allow_static_sanitization=False,
+                    )
+                    original_sha256 = self._sha256_file(path)
+                    derivative_sha256 = self._sha256_file(derivative)
+                except Exception:
+                    derivative.unlink(missing_ok=True)
+                    raise
                 self._check_timeout(started)
+                return ValidationResult(
+                    derivative_path=derivative,
+                    sanitization=PdfSanitizationRecord(
+                        sanitizer_version=PDF_SANITIZER_VERSION,
+                        original_sha256=original_sha256,
+                        derivative_sha256=derivative_sha256,
+                        warning=PDF_SANITIZER_WARNING,
+                    ),
+                )
             finally:
                 logger.handlers = previous_handlers
                 logger.setLevel(previous_level)
                 logger.propagate = previous_propagate
+                pdf_filters.ZLIB_MAX_OUTPUT_LENGTH = previous_decompression_limit
 
-    def _probe_pdf_structure(self, path: Path, started: float) -> None:
+    def _probe_pdf_structure(
+        self,
+        path: Path,
+        started: float,
+        *,
+        allow_static_sanitization: bool = True,
+    ) -> bool:
         try:
             reader = PdfReader(path, strict=True)
             self._check_timeout(started)
@@ -522,7 +614,15 @@ class SourceLibraryStore:
             if len(reader.pages) == 0 or len(reader.pages) > 500:
                 raise LibraryError("PDF_PAGE_LIMIT")
             self._check_timeout(started)
-            self._reject_pdf_active_content(reader, started)
+            requires_sanitization = self._requires_pdf_sanitization(reader)
+            if requires_sanitization and not allow_static_sanitization:
+                raise LibraryError("PDF_ACTIVE_CONTENT")
+            self._reject_pdf_active_content(
+                reader,
+                started,
+                sanitizing=requires_sanitization,
+                allow_internal_navigation=allow_static_sanitization,
+            )
             text_bytes = 0
             for page in reader.pages:
                 self._check_timeout(started)
@@ -530,28 +630,84 @@ class SourceLibraryStore:
                 self._check_timeout(started)
                 if text_bytes > 5 * 1024 * 1024:
                     raise LibraryError("PDF_TEXT_LIMIT")
+            return requires_sanitization
         except LibraryError:
             raise
         except Exception as error:
             raise LibraryError("PDF_STRUCTURE_UNSUPPORTED") from error
 
-    def _reject_pdf_active_content(self, reader: PdfReader, started: float) -> None:
+    @staticmethod
+    def _requires_pdf_sanitization(reader: PdfReader) -> bool:
+        root = reader.root_object
+        if any(key in root for key in ("/AcroForm", "/Names", "/AA")):
+            return True
+        return any("/AA" in page for page in reader.pages)
+
+    @staticmethod
+    def _resolve_pdf_object(value: object) -> object:
+        return value.get_object() if isinstance(value, IndirectObject) else value
+
+    def _is_safe_internal_pdf_action(
+        self,
+        value: object,
+        *,
+        page_references: frozenset[IndirectObject],
+        resolve_named_destination: Callable[[str], Destination | None],
+    ) -> bool:
+        action = self._resolve_pdf_object(value)
+        if not isinstance(action, DictionaryObject):
+            return False
+        if str(action.get("/S", "")) != "/GoTo":
+            return False
+        if {str(key) for key in action} - {"/Type", "/S", "/D"}:
+            return False
+        destination = self._resolve_pdf_object(action.get("/D"))
+        if isinstance(destination, NameObject | TextStringObject):
+            named_destination = resolve_named_destination(str(destination))
+            if named_destination is None:
+                return False
+            destination = named_destination.dest_array
+        if not isinstance(destination, ArrayObject) or not 2 <= len(destination) <= 6:
+            return False
+        page_reference = destination[0]
+        if not isinstance(page_reference, IndirectObject) or page_reference not in page_references:
+            return False
+        fit = str(self._resolve_pdf_object(destination[1]))
+        expected_lengths = {
+            "/XYZ": 5,
+            "/Fit": 2,
+            "/FitH": 3,
+            "/FitV": 3,
+            "/FitR": 6,
+            "/FitB": 2,
+            "/FitBH": 3,
+            "/FitBV": 3,
+        }
+        return len(destination) == expected_lengths.get(fit)
+
+    def _reject_pdf_active_content(
+        self,
+        reader: PdfReader,
+        started: float,
+        *,
+        sanitizing: bool,
+        allow_internal_navigation: bool,
+    ) -> None:
         forbidden_keys = {
-            "/A",
             "/AA",
             "/AcroForm",
+            "/EF",
             "/EmbeddedFiles",
             "/Filespec",
             "/JavaScript",
             "/JS",
             "/Launch",
-            "/OpenAction",
+            "/RF",
             "/RichMedia",
             "/URI",
             "/XFA",
         }
         forbidden_actions = {
-            "/GoTo",
             "/GoTo3DView",
             "/GoToE",
             "/GoToR",
@@ -582,9 +738,29 @@ class SourceLibraryStore:
             "/Sound",
             "/Widget",
         }
+        root = reader.root_object
+        page_references = frozenset(
+            reference for page in reader.pages if (reference := page.indirect_reference) is not None
+        )
+        named_destinations: dict[str, Destination] | None = None
+
+        def resolve_named_destination(name: str) -> Destination | None:
+            nonlocal named_destinations
+            if named_destinations is None:
+                named_destinations = reader.named_destinations
+            return named_destinations.get(name)
+
+        def is_safe_internal_action(value: object) -> bool:
+            return self._is_safe_internal_pdf_action(
+                value,
+                page_references=page_references,
+                resolve_named_destination=resolve_named_destination,
+            )
+
         stack = [reader.trailer]
         seen: set[tuple[int, int] | int] = set()
         inspected = 0
+        decoded_stream_bytes = 0
         while stack:
             self._check_timeout(started)
             value = stack.pop()
@@ -600,22 +776,83 @@ class SourceLibraryStore:
                     continue
                 seen.add(identity)
             inspected += 1
-            if inspected > 10_000:
+            if inspected > PDF_MAX_GRAPH_VALUES:
                 raise LibraryError("PDF_STRUCTURE_UNSUPPORTED")
+            if isinstance(value, StreamObject):
+                try:
+                    decoded_size = len(value.get_data())
+                except LimitReachedError as error:
+                    raise LibraryError("PDF_DECOMPRESSION_LIMIT") from error
+                decoded_stream_bytes += decoded_size
+                if (
+                    decoded_size > PDF_MAX_DECODED_STREAM_BYTES
+                    or decoded_stream_bytes > PDF_MAX_TOTAL_DECODED_STREAM_BYTES
+                ):
+                    raise LibraryError("PDF_DECOMPRESSION_LIMIT")
             if isinstance(value, DictionaryObject):
                 keys = {str(key) for key in value.keys()}
                 object_type = str(value.get("/Type", ""))
                 object_subtype = str(value.get("/Subtype", ""))
+                skipped_keys: set[str] = set()
+                if sanitizing:
+                    if value is root:
+                        skipped_keys.update({"/AcroForm", "/Names", "/AA", "/OpenAction"})
+                    if object_type == "/Page":
+                        skipped_keys.update({"/Annots", "/AA"})
+                checked_keys = keys - skipped_keys
                 if (
-                    keys & forbidden_keys
+                    checked_keys & forbidden_keys
                     or str(value.get("/S", "")) in forbidden_actions
                     or object_type in forbidden_types
                     or object_subtype in forbidden_types
                 ):
                     raise LibraryError("PDF_ACTIVE_CONTENT")
-                stack.extend(value.values())
+                if object_type == "/Action" and (
+                    not allow_internal_navigation or not is_safe_internal_action(value)
+                ):
+                    raise LibraryError("PDF_ACTIVE_CONTENT")
+                for action_key in ("/A", "/OpenAction"):
+                    if action_key not in checked_keys:
+                        continue
+                    if not allow_internal_navigation or not is_safe_internal_action(
+                        value[action_key]
+                    ):
+                        raise LibraryError("PDF_ACTIVE_CONTENT")
+                if str(value.get("/S", "")) == "/GoTo" and (
+                    not allow_internal_navigation or not is_safe_internal_action(value)
+                ):
+                    raise LibraryError("PDF_ACTIVE_CONTENT")
+                stack.extend(item for key, item in value.items() if str(key) not in skipped_keys)
             elif isinstance(value, ArrayObject):
                 stack.extend(value)
+
+    def _sanitize_pdf(self, path: Path, started: float) -> Path:
+        derivative = path.with_suffix(".sanitized")
+        derivative.unlink(missing_ok=True)
+        try:
+            reader = PdfReader(path, strict=True)
+            writer = PdfWriter()
+            for page in reader.pages:
+                self._check_timeout(started)
+                writer.add_page(page, excluded_keys=("/Annots", "/AA"))
+            with derivative.open("xb") as target:
+                writer.write(target)
+            os.chmod(derivative, stat.S_IRUSR | stat.S_IWUSR)
+            if derivative.stat().st_size == 0 or derivative.stat().st_size > self.max_pdf_bytes:
+                raise LibraryError("PDF_SANITIZED_SIZE_LIMIT")
+            self._check_timeout(started)
+            return derivative
+        except Exception:
+            derivative.unlink(missing_ok=True)
+            raise
+
+    @staticmethod
+    def _sha256_file(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as source:
+            while chunk := source.read(CHUNK_SIZE):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     def _probe_xlsx(self, path: Path, started: float) -> None:
         with path.open("rb") as source:
@@ -843,6 +1080,8 @@ class SourceLibraryStore:
             if stored is None:
                 raise LibraryError("FILE_NOT_FOUND", 404)
             self.blobs.delete_file(stored.path)
+            if stored.original_path is not None:
+                self.blobs.delete_file(stored.original_path)
             self._touch(record)
             return stored.metadata
 

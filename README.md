@@ -33,6 +33,13 @@ The temporary Source Library adds strict PDF/XLSX intake under private process-l
 30-minute idle/two-hour absolute cleanup, and scoped deletion receipts. It uses no database and is
 single-process/single-worker only. It is not supported for confidential production input; see
 [ADR 0004](docs/architecture/0004-temporary-process-local-source-library.md).
+PDFs with forms, name trees, or additional actions are exposed to downstream processing only after
+a bounded page-only static derivative is rebuilt and passes the strict validator again. The
+unchanged upload is retained in the opaque session directory only as sealed provenance, with its
+SHA-256, the derivative SHA-256, sanitizer version, and warning recorded in process-local state;
+preview/download and future parser/provider paths receive only the derivative. Session/file deletion
+removes both copies. Catalog JavaScript/Launch/external-navigation actions that are not isolated
+behind a stripped interactive surface remain rejected.
 
 A standalone, disabled-by-default Supabase Google Auth handoff is documented in
 [`docs/supabase-google-auth.md`](docs/supabase-google-auth.md). It does not alter the product shell,
