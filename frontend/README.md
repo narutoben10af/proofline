@@ -21,7 +21,7 @@ pnpm run test:sites
 
 `src/mock-contract.js` is the stable adapter boundary for the forthcoming backend session/finding contract. The bundled values are a human-verified fictional demo fixture; no issuer PDF or workbook is included, uploaded, or parsed. UI components consume only the normalized `reviewFixture` returned by `adaptReviewContract`.
 
-`src/company-lens-contract.js` reserves a secondary Company Lens boundary without adding another dashboard to the current milestone. It caps default economic context to four source-backed indicators and forces the caveat “Context only; no causal relationship is asserted.” The live Review Desk exports a JSON evidence package; it does not print the DOM or claim to produce a reviewed PDF.
+The live Review Desk exports a JSON evidence package; it does not print the DOM or claim to produce a reviewed PDF.
 
 ## Screenshots
 

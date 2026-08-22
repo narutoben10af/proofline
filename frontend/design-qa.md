@@ -1,10 +1,10 @@
 # Proofline Editorial Ledger design QA
 
-**Source visual truth:** `docs/screenshots/editorial-ledger-reference.jpg`  
-**Implementation screenshot:** `docs/screenshots/review-desk-desktop.jpg`  
-**Combined comparison:** `docs/screenshots/design-comparison.jpg`  
-**Viewport:** 1440 × 1024 CSS px, device scale factor 1  
-**Responsive evidence:** `docs/screenshots/review-desk-320.jpg`, 320 × 1000 CSS px viewport  
+**Source visual truth:** `docs/screenshots/editorial-ledger-reference.jpg`
+**Implementation screenshot:** `docs/screenshots/review-desk-desktop.jpg`
+**Combined comparison:** `docs/screenshots/design-comparison.jpg`
+**Viewport:** 1440 × 1024 CSS px, device scale factor 1
+**Responsive evidence:** `docs/screenshots/review-desk-320.jpg`, 320 × 1000 CSS px viewport
 **State:** ready review, PDF evidence open, spreadsheet evidence closed
 
 ## Full-view comparison evidence
@@ -31,6 +31,5 @@ Browser checks confirmed spreadsheet disclosure changes `aria-expanded` to `true
 ## Follow-up polish
 
 - P3: Replace the fictional demo adapter with final typed backend source-span contracts when available.
-- P3: Add the secondary Company Lens only after macro/report contracts are stable.
 
 **final result: passed**
