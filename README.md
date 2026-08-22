@@ -22,11 +22,12 @@ The product is designed around the DevLeague Lab 1 brief: combine financial PDFs
 The repository now includes a minimal contract-first FastAPI backend plus the isolated Company
 Lens and deterministic reporting slice. Versioned JSON contracts, four deterministic Tier 0
 metrics, conservative classification, official-source FY2025 economic context fixtures, one
-historical series per reviewed company, and a typed ReportLab PDF renderer are implemented. Parsing
-adapters remain intentionally stubbed. The optional server-side Gemma 4 transport is implemented
+historical series per reviewed company, native PDF/XLSX evidence extraction, deterministic workbook
+normalization, and a typed ReportLab PDF renderer are implemented. OCR and live hosted-model
+transport remain optional boundaries. The optional server-side Gemma 4 transport is implemented
 behind bounded, cited, provider-neutral contracts and stays disabled without a server credential;
-see the [API contract notes](docs/api-contracts.md) for the stable frontend boundary and
-limitations.
+see the [API contract notes](docs/api-contracts.md) and [ingestion limits](docs/ingestion.md) for
+the stable frontend boundary and limitations.
 
 The temporary Source Library adds strict PDF/XLSX intake under private process-local capabilities,
 30-minute idle/two-hour absolute cleanup, and scoped deletion receipts. It uses no database and is
@@ -123,20 +124,22 @@ or unsupported forecast assertions.
 
 ### Current limitations
 
-- Inputs must already be normalized facts with provenance IDs; PDF/workbook adapters are protocols,
-  not broad parsers yet.
+- Native PDF pages and structural XLSX cells can be extracted with portable provenance. Explicitly
+  labeled row-oriented or transposed workbooks can be normalized into base-unit Tier-0 facts and
+  calculation plans; unsupported or ambiguous metadata/layouts remain a reviewed mapping step.
 - Only the four Tier 0 metrics are accepted. Arithmetic uses Python `Decimal` and typed allowlisted
   plans; no model-generated code or expressions are executed.
 - Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
-- There is no database, durable retention, OCR, authentication, or production
-  privacy/compliance claim. The v1 session endpoints remain metadata-only; the separate temporary
-  Source Library accepts narrowly validated PDF/XLSX bytes in one running process and does not run
-  processing adapters or automatically send uploaded material to a provider. The optional hosted
-  model accepts only explicitly selected, bounded public-fixture evidence and is disabled by
-  default.
-- The deterministic reporting slice does not upload document bytes or run processing adapters.
-  Session deletion cannot remove provider-held data or PDF/JSON exports already downloaded by
-  users.
+- There is no database, durable retention, bundled OCR runtime, hosted model call, authentication, or production
+  privacy/compliance claim. The separate temporary Source Library accepts narrowly validated PDF/XLSX
+  bytes in one running process; its explicit `/api/sessions/{session_id}/analysis` boundary runs
+  only the local, reviewed digital-text/XLSX path and never sends uploaded material to a provider.
+- Automatic report-bundle publication, narrative claim extraction beyond the small explicit PDF claim
+  grammar, arbitrary PDF-table reconstruction, and public upload-normalized contract versioning remain
+  future work. Unsupported, scanned, formula-bearing, or ambiguous uploads fail closed for review.
+  Session deletion cannot remove PDF or JSON exports already downloaded by users.
+  The optional hosted model accepts only explicitly selected, bounded public-fixture evidence and is
+  disabled by default; provider-held data is outside session deletion scope.
 - `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
   human-edited dependency declaration.
 
