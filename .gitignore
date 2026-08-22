@@ -41,3 +41,6 @@ tmp/
 data/private/
 uploads/
 artifacts/
+
+# Design-tool working files
+.superdesign/tmp/
