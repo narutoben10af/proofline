@@ -22,9 +22,10 @@ The product is designed around the DevLeague Lab 1 brief: combine financial PDFs
 The repository now includes a minimal contract-first FastAPI backend plus the isolated Company
 Lens and deterministic reporting slice. Versioned JSON contracts, four deterministic Tier 0
 metrics, conservative classification, official-source FY2025 economic context fixtures, one
-historical series per reviewed company, and a typed ReportLab PDF renderer are implemented. Parsing
-and live hosted-model transport remain intentionally stubbed; see the [API contract
-notes](docs/api-contracts.md) for the stable frontend boundary and limitations.
+historical series per reviewed company, a typed ReportLab PDF renderer, native digital-PDF text
+extraction, and structural XLSX cell extraction are implemented. OCR and live hosted-model
+transport remain optional boundaries; see the [API contract notes](docs/api-contracts.md) and
+[ingestion limits](docs/ingestion.md) for the stable boundaries and limitations.
 
 ## Intended demo flow
 
@@ -104,15 +105,15 @@ never fetches a source, refreshes economic data, recalculates a metric, or creat
 
 ### Current limitations
 
-- Inputs must already be normalized facts with provenance IDs; PDF/workbook adapters are protocols,
-  not broad parsers yet.
+- Native PDF pages and structural XLSX cells can be extracted with portable provenance. Mapping
+  those candidates into normalized financial facts remains a separate reviewed step.
 - Only the four Tier 0 metrics are accepted. Arithmetic uses Python `Decimal` and typed allowlisted
   plans; no model-generated code or expressions are executed.
 - Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
-- There is no database, document-byte upload, OCR, hosted model call, frontend, or production
-  privacy/compliance claim in this slice. Session endpoints retain and delete process-local intake
-  metadata only; they do not yet run processing adapters. Session deletion cannot remove already
-  downloaded PDF or JSON exports.
+- There is no database, document-byte upload endpoint, bundled OCR runtime, hosted model call, or
+  production privacy/compliance claim in this slice. Session endpoints retain and delete
+  process-local intake metadata only; they do not yet run processing adapters. Session deletion
+  cannot remove already downloaded PDF or JSON exports.
 - `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
   human-edited dependency declaration.
 
