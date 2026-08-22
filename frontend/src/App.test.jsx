@@ -285,8 +285,56 @@ describe("MagicFin product shell", () => {
     expect(dialog).toHaveTextContent(/Annual Report 2025/);
     await user.click(within(dialog).getByRole("button", { name: /what can this demo not do/i }));
     expect(dialog).toHaveTextContent(/does not upload files, persist data, call a live model, or create a live-session report/i);
-    expect(within(dialog).getByRole("textbox", { name: /free-form questions unavailable/i })).toBeDisabled();
-    expect(dialog).toHaveTextContent(/Connect a server-side model provider/);
+    expect(within(dialog).getByRole("textbox", { name: /ask a question about the cited evidence/i })).toBeEnabled();
+    expect(dialog).toHaveTextContent(/Questions are answered only from the cited evidence/);
+  });
+
+  it("sends a typed question to the assistant endpoint and renders the cited answer", async () => {
+    const user = userEvent.setup();
+    const answer = {
+      state: "completed",
+      content: "Revenue grew 5.4% against the cited workbook cells.",
+      citations: [{ evidence_id: "assistant-sheet", source_span_id: "Income-Statement-cells-B5:C5", label: "Financials FY2025 · B5:C5" }],
+      provider: "gemma_via_gemini_api",
+      model: "gemma-4-26b-a4b-it",
+      disclosure: "Only the bounded evidence excerpts in this request were sent to Gemma 4.",
+    };
+    const fetchMock = vi.fn(async (path) =>
+      new Response(JSON.stringify(path === "/api/v1/assistant" ? answer : { state: "ready", provider: "gemma_via_gemini_api", model: "gemma-4-26b-a4b-it", live_transport_enabled: true, disclosure: "ready" }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App initialRoute="/" initialAssistantOpen />);
+    const dialog = screen.getByRole("dialog", { name: /ask the fixture/i });
+    await user.type(within(dialog).getByRole("textbox", { name: /ask a question about the cited evidence/i }), "Does the release describe revenue growth accurately?");
+    await user.click(within(dialog).getByRole("button", { name: /send message/i }));
+    expect(await within(dialog).findByText(/Revenue grew 5.4%/)).toBeInTheDocument();
+    const call = fetchMock.mock.calls.find(([path]) => path === "/api/v1/assistant");
+    expect(call).toBeTruthy();
+    const body = JSON.parse(call[1].body);
+    expect(body.provider_sent).toBe(true);
+    expect(body.prompt).toMatch(/revenue growth/i);
+    expect(body.evidence.length).toBeGreaterThan(0);
+    expect(body.evidence.length).toBeLessThanOrEqual(12);
+    body.evidence.forEach((item) => {
+      expect(item.evidence_id).toMatch(/^[A-Za-z0-9._:-]{1,128}$/);
+      expect(item.source_span_id).toMatch(/^[A-Za-z0-9._:-]{1,128}$/);
+      expect(item.text.length).toBeGreaterThan(0);
+    });
+    expect(new Set(body.evidence.map((item) => item.evidence_id)).size).toBe(body.evidence.length);
+    expect(new Set(body.evidence.map((item) => item.source_span_id)).size).toBe(body.evidence.length);
+    expect(JSON.stringify(body)).not.toMatch(/api[_-]?key/i);
+  });
+
+  it("surfaces a not_configured assistant reply without inventing an answer", async () => {
+    const user = userEvent.setup();
+    render(<App initialRoute="/" initialAssistantOpen />);
+    const dialog = screen.getByRole("dialog", { name: /ask the fixture/i });
+    await user.type(within(dialog).getByRole("textbox", { name: /ask a question about the cited evidence/i }), "What is the operating margin?");
+    await user.click(within(dialog).getByRole("button", { name: /send message/i }));
+    expect(await within(dialog).findByText(/No prompt or document content was sent to an external provider/i)).toBeInTheDocument();
+    const turn = dialog.querySelector(".assistant-turn");
+    expect(turn).toBeTruthy();
+    expect(turn).toHaveTextContent(/What is the operating margin\?/);
+    expect(turn).toHaveTextContent(/Provider not configured/i);
   });
 
   it("renders a validated assistant chart from source values with citations and table fallback", async () => {
@@ -560,23 +608,30 @@ describe("MagicFin product shell", () => {
   });
 
   it("keeps Magic Assistant provider credentials server-side and exposes connection states", async () => {
-    vi.useFakeTimers();
-    try {
-      const { unmount } = render(<App initialRoute="/settings" />);
-      expect(screen.getByText("Not configured")).toBeInTheDocument();
-      expect(screen.getByText("Google")).toBeInTheDocument();
-      expect(screen.getByText("gemma-4-26b-a4b-it")).toBeInTheDocument();
-      expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
-      unmount();
-      render(<App initialRoute="/settings" initialProviderMode="success" />);
-      expect(screen.getByText("Connected")).toBeInTheDocument();
-      fireEvent.click(screen.getByRole("button", { name: /test connection/i }));
-      expect(screen.getByRole("button", { name: /testing connection/i })).toBeDisabled();
-      await act(async () => { vi.advanceTimersByTime(320); });
-      expect(screen.getByText("Connected")).toBeInTheDocument();
-    } finally {
-      vi.useRealTimers();
-    }
+    const { unmount } = render(<App initialRoute="/settings" />);
+    expect(screen.getByText("Not configured")).toBeInTheDocument();
+    expect(screen.getByText("Google")).toBeInTheDocument();
+    expect(screen.getByText("gemma-4-26b-a4b-it")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
+    unmount();
+
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ reachable: true, state: "ready", disclosure: "Provider connection succeeded; no document content was sent." }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App initialRoute="/settings" initialProviderMode="not_configured" />);
+    fireEvent.click(screen.getByRole("button", { name: /test connection/i }));
+    expect(await screen.findByText("Connected")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith("/api/v1/providers/model/test", expect.objectContaining({ method: "POST", credentials: "same-origin" }));
+    expect(await screen.findByText(/Provider connection succeeded/)).toBeInTheDocument();
+  });
+
+  it("reports a failed provider connection test instead of claiming success", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(JSON.stringify({ reachable: false, state: "offline", disclosure: "Provider connection failed or timed out; no document content was sent." }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    render(<App initialRoute="/settings" initialProviderMode="not_configured" />);
+    fireEvent.click(screen.getByRole("button", { name: /test connection/i }));
+    expect(await screen.findByText("Connection failed")).toBeInTheDocument();
+    expect(screen.queryByText("Connected")).not.toBeInTheDocument();
   });
 
   it("renders a second synthetic issuer and currency through the same typed routes", async () => {
