@@ -1,0 +1,100 @@
+{
+  "schema_version": "proofline.financial.bank.metrics.v1",
+  "issuer": "Malayan Banking Berhad",
+  "entity_scope": "group_consolidated",
+  "currency": "MYR",
+  "outputs": [
+    {
+      "metric_id": "operating_revenue_growth_yoy",
+      "period": "FY2025",
+      "formula": "operating_revenue_2025 / operating_revenue_2024 - 1",
+      "input_fact_ids": ["maybank_operating_revenue_2025", "maybank_operating_revenue_2024"],
+      "expected_value": "-0.037328822733227270",
+      "unit": "ratio",
+      "evidence_label": "derived_calculation"
+    },
+    {
+      "metric_id": "net_operating_income_growth_yoy",
+      "period": "FY2025",
+      "formula": "net_operating_income_2025 / net_operating_income_2024 - 1",
+      "input_fact_ids": ["maybank_net_operating_income_2025", "maybank_net_operating_income_2024"],
+      "expected_value": "0.027288691732787204",
+      "unit": "ratio",
+      "evidence_label": "derived_calculation"
+    },
+    {
+      "metric_id": "profit_before_tax_growth_yoy",
+      "period": "FY2025",
+      "formula": "pbt_2025 / pbt_2024 - 1",
+      "input_fact_ids": ["maybank_pbt_2025", "maybank_pbt_2024"],
+      "expected_value": "0.046142831129144736",
+      "unit": "ratio",
+      "evidence_label": "derived_calculation"
+    },
+    {
+      "metric_id": "pre_tax_return_on_average_assets",
+      "period": "FY2025",
+      "formula": "pbt_2025 / ((total_assets_2025 + total_assets_2024) / 2)",
+      "input_fact_ids": ["maybank_pbt_2025", "maybank_total_assets_2025", "maybank_total_assets_2024"],
+      "expected_value": "0.013465880632170779",
+      "unit": "ratio",
+      "evidence_label": "derived_calculation",
+      "project_defined": true
+    },
+    {
+      "metric_id": "net_loans_to_customer_funding_proxy",
+      "period": "FY2025",
+      "formula": "net_customer_loans_2025 / (customer_deposits_2025 + investment_accounts_2025)",
+      "input_fact_ids": ["maybank_customer_loans_2025", "maybank_customer_deposits_2025", "maybank_investment_accounts_2025"],
+      "expected_value": "0.926111732740999871",
+      "unit": "ratio",
+      "evidence_label": "derived_calculation",
+      "project_defined": true,
+      "not_issuer_ldr": true
+    },
+    {
+      "metric_id": "customer_funding_to_assets",
+      "period": "FY2025",
+      "formula": "(customer_deposits_2025 + investment_accounts_2025) / total_assets_2025",
+      "input_fact_ids": ["maybank_customer_deposits_2025", "maybank_investment_accounts_2025", "maybank_total_assets_2025"],
+      "expected_value": "0.693816044456948942",
+      "unit": "ratio",
+      "evidence_label": "derived_calculation",
+      "project_defined": true
+    },
+    {
+      "metric_id": "cet1_capital_ratio_reported",
+      "period": "FY2025",
+      "formula": "reported_percent / 100",
+      "input_fact_ids": ["maybank_cet1_ratio_2025"],
+      "expected_value": "0.160410000000000000",
+      "unit": "ratio",
+      "evidence_label": "reported_ratio_normalized"
+    },
+    {
+      "metric_id": "cet1_change_percentage_points",
+      "period": "FY2025",
+      "formula": "cet1_percent_2025 - cet1_percent_2024",
+      "input_fact_ids": ["maybank_cet1_ratio_2025", "maybank_cet1_ratio_2024"],
+      "expected_value": "0.276",
+      "unit": "percentage_point",
+      "evidence_label": "derived_calculation"
+    }
+  ],
+  "hero_case": {
+    "case_id": "maybank_gross_net_income_direction_split",
+    "kind": "genuine_exception",
+    "period": "FY2025",
+    "operating_revenue_growth": "-0.037328822733227270",
+    "net_operating_income_growth": "0.027288691732787204",
+    "classification": "opposite_direction",
+    "interpretation": "Reported operating revenue declined while net operating income increased. This is a deterministic sign comparison, not a causal explanation."
+  },
+  "definition_trap": {
+    "case_id": "issuer_ldr_is_not_net_loans_proxy",
+    "issuer_reported_ldr_ratio": "0.938",
+    "project_net_loans_proxy_ratio": "0.926111732740999871",
+    "difference_percentage_points": "1.188826725900012851",
+    "reason": "Maybank defines its LDR using gross loans, advances and financing. The project proxy uses the net customer-loans statement row, so the two measures must remain separately labelled and must not be asserted equal."
+  }
+}

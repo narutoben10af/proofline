@@ -26,7 +26,18 @@ from proofline.contracts import (
     SourceSessionStatus,
 )
 from proofline.economic_context import get_company_lens
+from proofline.mcp_server import build_mcp_server, mcp_http_gateway
 from proofline.providers import GemmaProvider
+from proofline.providers.contracts import (
+    AssistantRequest,
+    AssistantResult,
+    ChartRequest,
+    ChartResult,
+    ClaimExtractionRequest,
+    ClaimExtractionResult,
+    ProviderConnectionTest,
+    ProviderStatus,
+)
 from proofline.report_contracts import CompanyLens, ReportRenderBundle, canonical_sha256
 from proofline.reports import (
     attachment_filename,
@@ -116,7 +127,7 @@ class SessionNoStoreMiddleware:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    app.state.claim_provider = GemmaProvider(
+    app.state.analysis_provider = GemmaProvider(
         api_key=settings.gemini_api_key,
         model=settings.gemma_model,
         timeout_seconds=settings.gemini_request_timeout_seconds,
@@ -141,9 +152,13 @@ async def lifespan(app: FastAPI):
                 source_store.cleanup_expired()
 
     cleanup_task = asyncio.create_task(periodic_cleanup())
+    mcp_http_app = build_mcp_server().streamable_http_app()
+    mcp_http_gateway.active_app = mcp_http_app
     try:
-        yield
+        async with mcp_http_app.router.lifespan_context(mcp_http_app):
+            yield
     finally:
+        mcp_http_gateway.active_app = None
         stop_cleanup.set()
         cleanup_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -220,6 +235,31 @@ def health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthRespon
         model_provider=settings.model_provider,
         model_configured=bool(settings.gemini_api_key),
     )
+
+
+@app.get("/api/v1/providers/model", response_model=ProviderStatus, tags=["providers"])
+def model_provider_status() -> ProviderStatus:
+    return app.state.analysis_provider.status()
+
+
+@app.post("/api/v1/providers/model/test", response_model=ProviderConnectionTest, tags=["providers"])
+async def test_model_provider_connection() -> ProviderConnectionTest:
+    return await app.state.analysis_provider.test_connection()
+
+
+@app.post("/api/v1/assistant", response_model=AssistantResult, tags=["providers"])
+async def create_assistant_response(request: AssistantRequest) -> AssistantResult:
+    return await app.state.analysis_provider.assist(request)
+
+
+@app.post("/api/v1/assistant/chart", response_model=ChartResult, tags=["providers"])
+async def create_chart_response(request: ChartRequest) -> ChartResult:
+    return await app.state.analysis_provider.propose_chart(request)
+
+
+@app.post("/api/v1/extractions", response_model=ClaimExtractionResult, tags=["providers"])
+async def create_claim_extraction(request: ClaimExtractionRequest) -> ClaimExtractionResult:
+    return await app.state.analysis_provider.extract_claims(request)
 
 
 @app.get("/api/public-demo/{fixture_id}", tags=["public-demo"])
@@ -483,3 +523,7 @@ def delete_session(session_id: str) -> DeletionReceipt:
     if receipt is None:
         raise HTTPException(status_code=404, detail="session not found")
     return receipt
+
+
+# Keep the existing API routes ahead of this catch-all mount. The mounted MCP app owns /mcp.
+app.mount("/", mcp_http_gateway)

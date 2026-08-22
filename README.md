@@ -24,13 +24,21 @@ Lens and deterministic reporting slice. Versioned JSON contracts, four determini
 metrics, conservative classification, official-source FY2025 economic context fixtures, one
 historical series per reviewed company, native PDF/XLSX evidence extraction, deterministic workbook
 normalization, and a typed ReportLab PDF renderer are implemented. OCR and live hosted-model
-transport remain optional boundaries; see the [API contract notes](docs/api-contracts.md) and
-[ingestion limits](docs/ingestion.md) for the stable boundaries and limitations.
+transport remain optional boundaries. The optional server-side Gemma 4 transport is implemented
+behind bounded, cited, provider-neutral contracts and stays disabled without a server credential;
+see the [API contract notes](docs/api-contracts.md) and [ingestion limits](docs/ingestion.md) for
+the stable frontend boundary and limitations.
 
 The temporary Source Library adds strict PDF/XLSX intake under private process-local capabilities,
 30-minute idle/two-hour absolute cleanup, and scoped deletion receipts. It uses no database and is
 single-process/single-worker only. It is not supported for confidential production input; see
 [ADR 0004](docs/architecture/0004-temporary-process-local-source-library.md).
+
+The same FastAPI process also exposes a tool-only, read-only MCP endpoint at `/mcp`. Its exact
+standard `search` and `fetch` tools cover only the public reviewed Apple and PCG demo corpus;
+they do not expose uploaded document bytes, secrets, private database state, or mutations. See
+[the MCP server guide](docs/mcp.md) for the contract, local verification, generic MCP setup, and
+ChatGPT Developer Mode steps.
 
 ## Intended demo flow
 
@@ -98,9 +106,10 @@ Open `http://127.0.0.1:8000/docs`, check `GET /health`, or submit the request po
 PYTHONPATH=src .venv/bin/python scripts/export_contracts.py
 ```
 
-`GEMINI_API_KEY` is optional and tests never require a live model. The v1 provider defaults to
-configured Gemma 4 but intentionally stops before network transport; it is a narrow interface for a
-later reviewed adapter.
+`GEMINI_API_KEY` is optional and tests never require a live key or network call. When configured,
+the v1 provider calls only the fixed allowlisted Gemini Developer API endpoints for the two
+supported Gemma 4 model identifiers. It returns locally schema-validated, cited results and typed
+offline/error states; see [the provider boundary](docs/model-provider.md).
 
 The compact fixture-backed lenses are available at `GET /api/v1/company-lenses/apple-fy2025` and
 `GET /api/v1/company-lenses/pcg-fy2025`. `POST /api/v1/reports/pdf` accepts the complete immutable
@@ -129,6 +138,8 @@ or unsupported forecast assertions.
   grammar, arbitrary PDF-table reconstruction, and public upload-normalized contract versioning remain
   future work. Unsupported, scanned, formula-bearing, or ambiguous uploads fail closed for review.
   Session deletion cannot remove PDF or JSON exports already downloaded by users.
+  The optional hosted model accepts only explicitly selected, bounded public-fixture evidence and is
+  disabled by default; provider-held data is outside session deletion scope.
 - `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
   human-edited dependency declaration.
 

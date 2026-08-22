@@ -1,0 +1,304 @@
+{
+  "$defs": {
+    "ExceptionalState": {
+      "enum": [
+        "missing_input",
+        "incomparable",
+        "zero_or_negative_denominator",
+        "unresolved_sign",
+        "invalid_plan",
+        "numeric_range"
+      ],
+      "title": "ExceptionalState",
+      "type": "string"
+    },
+    "FactObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "concept": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Concept",
+          "type": "string"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "display_value": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Display Value",
+          "type": "string"
+        },
+        "entity_scope": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Entity Scope",
+          "type": "string"
+        },
+        "fixture_status": {
+          "enum": [
+            "official",
+            "derived"
+          ],
+          "title": "Fixture Status",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "numeric_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Numeric Value"
+        },
+        "period": {
+          "$ref": "#/$defs/Period"
+        },
+        "restated": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Restated"
+        },
+        "sign_convention": {
+          "anyOf": [
+            {
+              "enum": [
+                "positive",
+                "cash_outflow_positive",
+                "cash_outflow_negative"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sign Convention"
+        },
+        "source_span_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Source Span Id",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source_span_id",
+        "concept",
+        "numeric_value",
+        "display_value",
+        "unit",
+        "period",
+        "entity_scope",
+        "restated",
+        "fixture_status"
+      ],
+      "title": "FactObservation",
+      "type": "object"
+    },
+    "MetricId": {
+      "enum": [
+        "revenue_growth_yoy",
+        "operating_margin",
+        "current_ratio",
+        "fcf_margin"
+      ],
+      "title": "MetricId",
+      "type": "string"
+    },
+    "MetricResult": {
+      "additionalProperties": false,
+      "properties": {
+        "exceptional_state": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ExceptionalState"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "formula_id": {
+          "title": "Formula Id",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "input_observation_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "title": "Input Observation Ids",
+          "type": "array"
+        },
+        "metric_id": {
+          "$ref": "#/$defs/MetricId"
+        },
+        "registry_version": {
+          "const": "1.0.0",
+          "default": "1.0.0",
+          "title": "Registry Version",
+          "type": "string"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "warnings": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "metric_id",
+        "formula_id",
+        "input_observation_ids"
+      ],
+      "title": "MetricResult",
+      "type": "object"
+    },
+    "Period": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_weeks": {
+          "anyOf": [
+            {
+              "maximum": 54,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Weeks"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        }
+      },
+      "required": [
+        "end"
+      ],
+      "title": "Period",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "metric_results": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/MetricResult"
+      },
+      "maxItems": 12,
+      "title": "Metric Results",
+      "type": "array"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/FactObservation"
+      },
+      "maxItems": 24,
+      "minItems": 1,
+      "title": "Observations",
+      "type": "array"
+    },
+    "prompt": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Prompt",
+      "type": "string"
+    },
+    "provider_sent": {
+      "const": true,
+      "title": "Provider Sent",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "prompt",
+    "observations",
+    "provider_sent"
+  ],
+  "title": "ChartRequest",
+  "type": "object"
+}
