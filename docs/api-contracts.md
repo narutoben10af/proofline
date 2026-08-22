@@ -103,9 +103,11 @@ publication and retrieval dates, relevance, comparability warning, official HTTP
 validation, and default/additional visibility. `FinancialTrendSeries` permits at most one series in
 a bundle and requires at least three unique chronological points on one reporting basis.
 
-`ReportRenderBundle` contains the full `AnalysisResponse`, reviewed `ReportSnapshot`, zero or one
-validated trend, resolved context, source mode/disclosure, and the exact narrow data-handling
-disclosure. For reporting, the snapshot's `evidence_chain_sha256` is deliberately validated against
+`ReportRenderBundle` contains the full `AnalysisResponse`, reviewed `ReportSnapshot`, an ID-only
+investor report profile, zero or one validated trend, optional resolved context, source
+mode/disclosure, and the exact narrow data-handling disclosure. The profile selects exactly four
+primary observations and four unique secondary ratios from the hashed analysis. For reporting, the
+snapshot's `evidence_chain_sha256` is deliberately validated against
 canonical bytes of the **full AnalysisResponse**, including claims. This stricter report boundary
 prevents claim text or asserted-value changes from escaping the hash even though the earlier
 portable `EvidenceChainSnapshot` omits claims.
@@ -120,10 +122,18 @@ sentences, deterministic classifier findings, one fixed company-bound title, one
 registered context/trend labels, and fixed live/cached disclosures. Explicitly attributed PDF
 quotes and spreadsheet display values remain verbatim evidence in the provenance appendix. Every
 report must contain at least one document, all documents must have the same issuer, that issuer must
-equal `bundle.company`, `company_id` must be in the reviewed company registry, and any claim entity
-must match the same company. `snapshot.analysis_id` is exactly `sha256:<canonical AnalysisResponse
+equal `bundle.company`, and any claim entity and selected observation entity scope must match the
+same company. Apple/PCG are fixture aliases only; other issuers use a deterministic hash-derived
+company ID. Selected primary metrics must use one explicit currency and one reporting-period end,
+and a trend must use that currency. `snapshot.analysis_id` is exactly `sha256:<canonical AnalysisResponse
 hash>`, so it cannot be relabeled independently. Canonical mappings reject non-string keys before
 sorting and normalize both float `0.0` and `-0.0` to the same representation.
+
+The renderer has no issuer-name conditionals and is regression-tested with synthetic GBP and JPY
+issuers. It renders no ownership/shareholder claim and no forecast section because those sourced,
+reviewed typed contracts do not exist in v1. If reviewed economic context is absent, the report
+states that fact and keeps the exact no-causation caveat. Generic issuer context requires an
+explicit official-source confirmation, a public HTTPS URL, and fixed reviewed non-causal narrative.
 
 Deletion applies only to application-managed session storage. It does not provide secure erasure,
 delete data held by providers, or remove PDF or JSON exports already downloaded by users.

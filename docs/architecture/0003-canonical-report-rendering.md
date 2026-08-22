@@ -13,9 +13,11 @@ omits claims, so its bytes alone cannot bind every finding input displayed in a 
 ## Decision
 
 Use one small server-side ReportLab renderer driven only by a frozen `ReportRenderBundle`. The
-bundle carries version identifiers, the full `AnalysisResponse`, reviewed `ReportSnapshot`, at most
-one validated historical series, resolved official-source economic context, explicit live/cached
-source disclosure, and the narrow export/deletion disclosure.
+bundle carries version identifiers, the full `AnalysisResponse`, reviewed `ReportSnapshot`, an
+ID-only `InvestorReportProfile`, at most one validated historical series, optional resolved
+official-source economic context, explicit live/cached source disclosure, and the narrow
+export/deletion disclosure. The profile selects four primary observations and four unique secondary
+ratio results by evidence ID; it cannot supply free-form report assertions.
 
 Canonical JSON uses sorted keys, UTF-8, normalized finite Decimal strings, and UTC `Z` timestamps.
 For this stricter report boundary, `ReportSnapshot.evidence_chain_sha256` must equal the SHA-256 of
@@ -28,10 +30,20 @@ or storage. Invalid IDs, counts, evidence hash, context, trend comparability, ca
 forecast markers reject the bundle before PDF bytes are returned.
 
 Report identity is bound fail-closed: a bundle requires a non-empty single document-issuer set,
-that issuer must equal the bundle company, the company ID must match the checked-in reviewed-company
-registry, and populated claim entities must match. A fixed company-qualified title prevents
-independent report rebranding. `snapshot.analysis_id` is the `sha256:`-prefixed canonical hash of
-the supplied `AnalysisResponse`.
+that issuer must equal the bundle company, and populated claim entities and selected observation
+entity scopes must match. Apple/PCG IDs remain fixture aliases; any other issuer uses a deterministic
+hash-derived company ID. A fixed company-qualified title prevents independent report rebranding.
+`snapshot.analysis_id` is the `sha256:`-prefixed canonical hash of the supplied `AnalysisResponse`.
+
+The profile requires one explicit currency across the four primary metrics, a single reporting
+period end, and unique metric definitions for secondary ratios. A supplied trend must use the same
+currency. The PDF presents an executive summary, four sourced primary metrics, secondary ratios,
+one optional trend, review risks, narrative-versus-numbers findings, separate no-causation context,
+provenance, limitations, reviewer state, and data handling. Generic issuer context requires an
+explicit official-source confirmation, public HTTPS, and fixed non-causal relevance/comparability
+sentences. With no reviewed context the report says so;
+without a validated forecast method, inputs, history, and uncertainty model it omits a forecast
+section. No shareholder or ownership section exists in this contract.
 
 The renderer never emits arbitrary model-authored narrative. Claim sentences come from typed metric
 fields, findings must equal a fresh deterministic classifier result, and title, limitations,
