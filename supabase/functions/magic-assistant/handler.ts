@@ -17,6 +17,9 @@ import {
 import type { FetchLike, ProviderConfig } from "./provider.ts";
 
 const MAX_HTTP_BODY_BYTES = 8_192;
+// Keep this synchronized with the browser headers sent by supabase-js. Without
+// x-client-info the browser accepts the OPTIONS response but blocks the POST.
+const CORS_ALLOW_HEADERS = "authorization, x-client-info, apikey, content-type";
 const NO_SEND_DISCLOSURE = "No evidence or question was sent to Google Gemma 4.";
 const SENT_DISCLOSURE =
   "Only the bounded question and RLS-authorized evidence metadata were sent to Google Gemma 4.";
@@ -121,7 +124,7 @@ export function createHandler(dependencies: HandlerDependencies) {
           status: 204,
           headers: {
             "access-control-allow-origin": origin,
-            "access-control-allow-headers": "authorization, content-type, apikey",
+            "access-control-allow-headers": CORS_ALLOW_HEADERS,
             "access-control-allow-methods": "POST, OPTIONS",
             "access-control-max-age": "600",
             vary: "Origin",
