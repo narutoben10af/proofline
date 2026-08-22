@@ -310,6 +310,15 @@ describe("MagicFin product shell", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("keeps the seeded assistant context stable and separate from uploaded files", () => {
+    expect(productFixture.assistantContext).toEqual({
+      mode: "verified_demo",
+      sessionId: "src-4d6167696346696e44656d6f32303235",
+      sourceIds: ["file-4d6167696346696e44656d6f"],
+    });
+    expect(productFixture.assistantContext.sourceIds).not.toContain("annual-report");
+  });
+
   it("opens a cited source drawer and deep-links to Review Desk evidence", async () => {
     const user = userEvent.setup();
     render(<App initialRoute="/company" initialAssistantOpen />);
