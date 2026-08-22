@@ -277,34 +277,57 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
   const visibleSources = sources.filter((source) => (filter === "all" || (filter === "ready" ? source.status === "Validated" : source.status !== "Validated")) && (!query || `${source.name} ${source.kind} ${source.date} ${source.provenance} ${source.anchor}`.toLowerCase().includes(query)));
   const expected = [sources[0]?.name, sources[1]?.name].filter(Boolean);
   const privateSession = session?.backend === "supabase";
+  const roleForName = (name = "") => {
+    const normalized = name.toLowerCase();
+    if (normalized.endsWith(".pdf")) return "report_pdf";
+    if (normalized.endsWith(".xlsx")) return "workbook";
+    return null;
+  };
+  const selectedRoles = new Set(files.map(roleForName).filter(Boolean));
+  const sourceSetComplete = selectedRoles.has("report_pdf") && selectedRoles.has("workbook");
   const choose = async (selected) => {
-    const names = selected.map((file) => file.name);
-    setFiles(names);
     if (session) {
-      if (selected.length !== 2 || !selected.some((file) => file.name.toLowerCase().endsWith(".pdf")) || !selected.some((file) => file.name.toLowerCase().endsWith(".xlsx"))) {
+      const incoming = selected.map((file) => ({ file, role: roleForName(file.name) }));
+      const incomingRoles = incoming.map((item) => item.role);
+      if (incoming.length < 1 || incoming.length > 2 || incomingRoles.some((role) => !role) || new Set(incomingRoles).size !== incomingRoles.length) {
         setState("error");
-        setSessionMessage("Choose one PDF financial report and one XLSX evidence workbook.");
+        setSessionMessage("Choose one PDF financial report, one XLSX evidence workbook, or one of each.");
         return;
       }
+      if (incomingRoles.some((role) => selectedRoles.has(role))) {
+        setState("error");
+        setSessionMessage("That file type is already stored in this session. Start a new session to replace it.");
+        return;
+      }
+      const combinedNames = [...files, ...incoming.map(({ file }) => file.name)];
+      const combinedRoles = new Set(combinedNames.map(roleForName).filter(Boolean));
+      const combinedComplete = combinedRoles.has("report_pdf") && combinedRoles.has("workbook");
       setState("server-loading");
-      setSessionMessage(privateSession ? "Registering and storing both files in your private source session." : "Uploading and checking both files in the temporary private session.");
+      setSessionMessage(privateSession ? `Registering and storing ${incoming.length === 1 ? "the file" : "both files"} in your private source session.` : `Uploading and checking ${incoming.length === 1 ? "the file" : "both files"} in the temporary private session.`);
       try {
         if (privateSession) {
           if (!privateStorage || authState?.status !== "authenticated") {
             throw new Error("Sign in again before uploading to the private source library.");
           }
-          const results = await Promise.all(selected.map((file) => privateStorage.uploadSource({
+          const results = await Promise.all(incoming.map(({ file, role }) => privateStorage.uploadSource({
             sessionId: session.session_id,
-            role: file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook",
+            role,
             file,
           })));
-          setFiles(results.map((item, index) => item?.display_name || selected[index]?.name).filter(Boolean));
+          const storedNames = results.map((item, index) => item?.display_name || incoming[index]?.file.name).filter(Boolean);
+          setFiles([...files, ...storedNames]);
           setState("stored");
-          setSessionMessage("Files are stored in your private source session. OCR and live analysis are not connected yet; no dashboard result was created.");
+          setSessionMessage(combinedComplete ? "Both files are stored in your private source session. OCR and live analysis are not connected yet; no dashboard result was created." : `${incoming[0].role === "report_pdf" ? "The PDF" : "The XLSX workbook"} is stored in your private source session. You can add the other supported file now or review this source on its own.`);
           return;
         }
-        const results = await Promise.all(selected.map((file) => uploadSource(session, file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook", file)));
-        setFiles(results.map((item, index) => item?.display_name || item?.file?.display_name || selected[index]?.name).filter(Boolean));
+        const results = await Promise.all(incoming.map(({ file, role }) => uploadSource(session, role, file)));
+        const storedNames = results.map((item, index) => item?.display_name || item?.file?.display_name || incoming[index]?.file.name).filter(Boolean);
+        setFiles([...files, ...storedNames]);
+        if (!combinedComplete) {
+          setState("stored");
+          setSessionMessage(`${incoming[0].role === "report_pdf" ? "The PDF" : "The XLSX workbook"} passed validation. Add the other supported file before source-cited analysis can start.`);
+          return;
+        }
         setSessionMessage("Files passed validation. Building the source-cited analysis…");
         const analysis = await analyzeSourceSession(session);
         onAnalysisReady?.(analysis);
@@ -340,8 +363,8 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
     }
   };
   const liveRole = state === "error" ? "alert" : "status";
-  const heading = state === "ready" ? "Live analysis complete." : state === "stored" ? "Files stored. Analysis is not connected yet." : state === "sample" ? "Sample sources loaded." : state === "error" ? "The source set needs attention." : state === "connecting" ? "Connecting the live file service." : state === "server-loading" ? (privateSession ? "Storing files in the private source library." : "Validating and analyzing uploaded files.") : session ? "Choose the report and workbook." : "Connect the live file service.";
-  const detail = sessionMessage || (state === "error" ? "The previous dashboard remains unchanged. Correct the issue and try again." : state === "sample" ? "Sample data is clearly labelled and does not represent an uploaded analysis." : state === "stored" ? "Your files are private and owner-scoped. OCR and live analysis are not connected yet." : session ? (privateSession ? "Choose one PDF financial report and one XLSX evidence workbook; storage starts only after your signed-in owner is verified." : "Choose one PDF financial report and one XLSX evidence workbook; analysis starts only after both pass validation.") : "Connect a temporary live session to upload and analyze your own source set.");
+  const heading = state === "ready" ? "Live analysis complete." : state === "stored" ? (sourceSetComplete ? "Files stored. Analysis is not connected yet." : "File stored. Add another source when ready.") : state === "sample" ? "Sample sources loaded." : state === "error" ? "The source set needs attention." : state === "connecting" ? "Connecting the live file service." : state === "server-loading" ? (privateSession ? "Storing files in the private source library." : "Validating uploaded files.") : session ? "Choose a PDF, XLSX, or both." : "Connect the live file service.";
+  const detail = sessionMessage || (state === "error" ? "The previous dashboard remains unchanged. Correct the issue and try again." : state === "sample" ? "Sample data is clearly labelled and does not represent an uploaded analysis." : state === "stored" ? "Your files are private and owner-scoped. Add the other supported source when you are ready." : session ? (privateSession ? "Upload one PDF, one XLSX workbook, or both. Each accepted file is stored only after your signed-in owner is verified." : "Upload one PDF, one XLSX workbook, or both. Source-cited analysis starts after both roles pass validation.") : "Connect a temporary live session to upload and analyze your own source set.");
   const slotStatus = state === "error" ? "Needs attention" : state === "server-loading" ? "Checking" : state === "ready" ? "Analyzed" : state === "stored" ? "Stored" : state === "sample" ? "Sample" : "Waiting";
   return (
     <div className="route-page files-sources-page">
@@ -353,13 +376,13 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
           <h2 id="files-review-title">{heading}</h2>
           <p>{detail}</p>
         </div>
-        <input ref={inputRef} className="visually-hidden" tabIndex="-1" aria-label="Select financial report PDF and evidence workbook" type="file" multiple accept=".pdf,.xlsx" onChange={(event) => choose([...event.target.files])} />
+        <input ref={inputRef} className="visually-hidden" tabIndex="-1" aria-label="Select a financial report PDF, an evidence workbook, or both" type="file" multiple accept=".pdf,.xlsx" onChange={(event) => { const selected = [...event.target.files]; event.target.value = ""; choose(selected); }} />
         {state === "server-loading" && <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>{privateSession ? "Register → store → await processing" : "Upload → validate → analyze"}</strong><small>{privateSession ? "The private adapter stores bytes and metadata only. No OCR or dashboard analysis is being claimed." : "The dashboard and report update only after the server returns a complete source-cited analysis."}</small></div>}
-        <div className="file-slot-grid" aria-label="Required review files">
-          {[{ role: "report_pdf", label: "Financial report", kind: "PDF", name: files.find((name) => name.toLowerCase().endsWith(".pdf")) || expected.find((name) => name.toLowerCase().endsWith(".pdf")) }, { role: "workbook", label: "Evidence workbook", kind: "XLSX", name: files.find((name) => name.toLowerCase().endsWith(".xlsx")) || expected.find((name) => name.toLowerCase().endsWith(".xlsx")) }].map((slot) => <article className="file-slot" key={slot.role}><span className="file-kind">{slot.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{slot.kind}</span><div><h3>{slot.label}</h3><p>{slot.name || "No file selected"}</p></div><StatusTag tone={state === "ready" ? "success" : state === "error" ? "warning" : "neutral"}>{slotStatus}</StatusTag></article>)}
+        <div className="file-slot-grid" aria-label="Supported review files">
+          {[{ role: "report_pdf", label: "Financial report", kind: "PDF", name: files.find((name) => name.toLowerCase().endsWith(".pdf")) || (state === "sample" ? expected.find((name) => name.toLowerCase().endsWith(".pdf")) : "") }, { role: "workbook", label: "Evidence workbook", kind: "XLSX", name: files.find((name) => name.toLowerCase().endsWith(".xlsx")) || (state === "sample" ? expected.find((name) => name.toLowerCase().endsWith(".xlsx")) : "") }].map((slot) => <article className="file-slot" key={slot.role}><span className="file-kind">{slot.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{slot.kind}</span><div><h3>{slot.label}</h3><p>{slot.name || "No file selected"}</p></div><StatusTag tone={slot.name && (state === "ready" || state === "stored") ? "success" : state === "error" ? "warning" : "neutral"}>{slot.name ? slotStatus : "Optional"}</StatusTag></article>)}
         </div>
         <div className="upload-actions">
-          <button className="button primary" type="button" disabled={state === "server-loading" || state === "connecting"} onClick={() => state === "ready" ? onNavigate("/") : state === "stored" ? onNavigate("/files#sources") : session ? inputRef.current?.click() : startPrivateSession()}>{state === "connecting" ? "Connecting…" : state === "server-loading" ? (privateSession ? "Storing files…" : "Analyzing uploaded files…") : state === "ready" ? "View updated dashboard" : state === "stored" ? "View source library" : session ? "Select files to analyze" : "Connect live file service"}</button>
+          <button className="button primary" type="button" disabled={state === "server-loading" || state === "connecting"} onClick={() => state === "ready" ? onNavigate("/") : state === "stored" && sourceSetComplete ? onNavigate("/files#sources") : session ? inputRef.current?.click() : startPrivateSession()}>{state === "connecting" ? "Connecting…" : state === "server-loading" ? (privateSession ? "Storing files…" : "Checking uploaded files…") : state === "ready" ? "View updated dashboard" : state === "stored" && sourceSetComplete ? "View source library" : state === "stored" ? "Add another file" : session ? "Select PDF or XLSX" : "Connect live file service"}</button>
           <button className="button secondary" type="button" disabled={state === "server-loading" || state === "connecting" || expected.length !== 2} onClick={() => { setSession(null); setSessionMessage(""); setFiles(expected); setState("sample"); onFixtureReady?.(); }}>Try sample data</button>
         </div>
         <details className="privacy-details"><summary>{state === "sample" ? "About sample data" : "Privacy and retention"}</summary><p>{state === "sample" ? "The sample option restores MagicFin’s preloaded, human-checked dataset. It never reads or uploads files from your device and is not presented as a live analysis." : privateSession ? "Selected bytes are stored only in the private owner-scoped Supabase bucket through the authenticated adapter. This frontend does not run OCR or claim a completed analysis." : session ? "This temporary session uploads only the files you choose. It expires after 30 minutes idle or two hours absolute; deletion guarantees require a server receipt." : "The live service creates a temporary session before the file picker opens. Use it only for documents you are authorized to process."}</p></details>

@@ -158,7 +158,7 @@ describe("MagicFin product shell", () => {
     const fake = fakeAuthHandoff({ status: "authenticated", ownerId }, "/", privateStorage);
     render(<App initialRoute="/files" authHandoffFactory={() => fake.handoff} />);
     await user.click(screen.getByRole("button", { name: /connect live file service/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /select pdf or xlsx/i })).toBeEnabled());
     fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
       new File(["%PDF"], "private-report.pdf", { type: "application/pdf" }),
       new File(["workbook"], "private-workbook.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
@@ -167,6 +167,44 @@ describe("MagicFin product shell", () => {
     expect(privateStorage.createSession).toHaveBeenCalledOnce();
     expect(privateStorage.uploadSource).toHaveBeenCalledTimes(2);
     expect(screen.getByText(/ocr and live analysis are not connected yet/i)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["PDF", () => new File(["%PDF"], "private-report.pdf", { type: "application/pdf" }), "report_pdf", /the pdf is stored/i],
+    ["XLSX", () => new File(["workbook"], "private-workbook.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "workbook", /the xlsx workbook is stored/i],
+  ])("stores one %s independently and offers the other supported source", async (_kind, makeFile, role, storedMessage) => {
+    const user = userEvent.setup();
+    const ownerId = "10000000-0000-4000-8000-000000000001";
+    const privateStorage = {
+      createSession: vi.fn().mockResolvedValue({ backend: "supabase", session_id: "11000000-0000-4000-8000-000000000001" }),
+      uploadSource: vi.fn().mockImplementation(({ file }) => Promise.resolve({ display_name: file.name })),
+    };
+    const fake = fakeAuthHandoff({ status: "authenticated", ownerId }, "/", privateStorage);
+    render(<App initialRoute="/files" authHandoffFactory={() => fake.handoff} />);
+    await user.click(screen.getByRole("button", { name: /connect live file service/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /select pdf or xlsx/i })).toBeEnabled());
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [makeFile()] } });
+    await waitFor(() => expect(screen.getByRole("heading", { name: /file stored. add another source/i })).toBeInTheDocument());
+    expect(privateStorage.uploadSource).toHaveBeenCalledOnce();
+    expect(privateStorage.uploadSource).toHaveBeenCalledWith(expect.objectContaining({ role }));
+    expect(screen.getByText(storedMessage)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add another file/i })).toBeEnabled();
+  });
+
+  it("keeps the live upload allowlist limited to one PDF, one XLSX, or one of each", async () => {
+    const user = userEvent.setup();
+    const privateStorage = {
+      createSession: vi.fn().mockResolvedValue({ backend: "supabase", session_id: "11000000-0000-4000-8000-000000000001" }),
+      uploadSource: vi.fn(),
+    };
+    const fake = fakeAuthHandoff({ status: "authenticated", ownerId: "10000000-0000-4000-8000-000000000001" }, "/", privateStorage);
+    render(<App initialRoute="/files" authHandoffFactory={() => fake.handoff} />);
+    await user.click(screen.getByRole("button", { name: /connect live file service/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /select pdf or xlsx/i })).toBeEnabled());
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(["notes"], "notes.txt", { type: "text/plain" })] } });
+    expect(screen.getByRole("heading", { name: /source set needs attention/i })).toBeInTheDocument();
+    expect(screen.getByText(/one PDF financial report, one XLSX evidence workbook, or one of each/i)).toBeInTheDocument();
+    expect(privateStorage.uploadSource).not.toHaveBeenCalled();
   });
 
   it("sends the Home analysis action to the real uploader without simulating completion", async () => {
@@ -414,7 +452,7 @@ describe("MagicFin product shell", () => {
       .mockResolvedValueOnce(jsonResponse(liveAnalysisResponse)));
     render(<App initialRoute="/files" />);
     await user.click(screen.getByRole("button", { name: /connect live file service/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /select pdf or xlsx/i })).toBeEnabled());
     fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
       new File(["%PDF"], "Meridian_Report_2026.pdf", { type: "application/pdf" }),
       new File(["workbook"], "Meridian_Financials_2026.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
@@ -437,7 +475,7 @@ describe("MagicFin product shell", () => {
       .mockResolvedValueOnce(jsonResponse({ reason_code: "PROVIDER_ACCESS_REQUIRED" }, false)));
     render(<App initialRoute="/files" />);
     await user.click(screen.getByRole("button", { name: /connect live file service/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: /select pdf or xlsx/i })).toBeEnabled());
     fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
       new File(["%PDF"], "Arbitrary.pdf", { type: "application/pdf" }),
       new File(["workbook"], "Arbitrary.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
