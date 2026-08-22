@@ -1,0 +1,43 @@
+# Local workspace scaffolding
+/work/
+/outputs/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# JavaScript / TypeScript
+node_modules/
+.npm/
+.pnpm-store/
+coverage/
+dist/
+build/
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Logs and temporary files
+*.log
+*.tmp
+tmp/
+
+# Local inputs and generated artifacts
+data/private/
+uploads/
+artifacts/

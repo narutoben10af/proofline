@@ -1,0 +1,80 @@
+# Proofline
+
+**Every financial claim needs a receipt.**
+
+Proofline is a six-hour hackathon prototype for comparing narrative claims in financial-report PDFs with figures in spreadsheets. Its intended output is an evidence-backed classification for each claim:
+
+- **Supported** — the available spreadsheet evidence agrees with the claim.
+- **Uncertain** — the available evidence is missing, ambiguous, or insufficient.
+- **Contradicted** — the available spreadsheet evidence conflicts with the claim.
+
+> [!IMPORTANT]
+> Proofline is a prototype, not an accounting, audit, investment, or compliance tool. Human review remains required. No production implementation or evaluation results are claimed in this repository yet.
+
+## Why Proofline
+
+The proposed **Proofline Review Desk** turns each review into a compact **Visual Verdict**: a three-state summary, one dominant discrepancy comparison, an optional three-period trend, and a four-step proof trail from claim to cited inputs to deterministic formula to result. PDF and spreadsheet evidence appears progressively when the reviewer asks for it. Proofline identifies evidence and disagreement; it does not invent a cause or make an accounting conclusion.
+
+The product is designed around the DevLeague Lab 1 brief: combine financial PDFs and spreadsheets, surface trends, anomalies, exceptions, and risks, communicate concise insights and recommendations, retain explainable evidence, and make privacy and responsible-AI controls visible. The [full plan](PLAN.md) maps those broad requirements to a deliberately narrow six-hour build.
+
+## Status
+
+Repository foundation and planning stage. See [PLAN.md](PLAN.md) for the researched prototype decisions, remaining pre-build decisions, and long-term placeholders.
+
+## Intended demo flow
+
+1. Load one approved financial-report PDF and a related spreadsheet or clearly labeled derived fixture.
+2. Extract candidate narrative claims with page-level provenance using native text first and narrowly scoped fallbacks.
+3. Identify relevant spreadsheet cells and normalize comparable values.
+4. Calculate four fixed metrics in deterministic code; AI never supplies authoritative arithmetic.
+5. Compare claims with evidence and display the classification, rationale, calculation, and source references for human review.
+
+## Six-hour technical path
+
+- Native PDF text extraction first with PyMuPDF or pdfplumber.
+- PaddleOCR PP-StructureV3 only for scanned or failed pages.
+- Hosted `gemma-4-26b-a4b-it` through the Gemini API for structured claim extraction and isolated failed-page analysis, validated against a schema.
+- One retry, then a cached verified demo result rather than an unvalidated answer.
+- Deterministic calculations for revenue growth, operating margin, current ratio, and a clearly labeled project-defined non-GAAP free-cash-flow margin.
+- A single FastAPI container serving the API and built React assets, with per-session temporary storage and TTL cleanup; no database is required for the six-hour path.
+
+This is the selected prototype path, not a claim of universal PDF support, OCR superiority, or measured accuracy. See [PLAN.md](PLAN.md) for formulas, fixtures, failure rules, privacy limits, and source links.
+
+## Demo fixtures
+
+- International: Apple FY2025 Form 10-K PDF plus the official structured workbook available from [Apple's filing hub](https://investor.apple.com/sec-filings/sec-filings-details/default.aspx?FilingId=18880179).
+- Malaysian: PETRONAS Chemicals Group Berhad FY2025 [financial report](https://www.petronas.com/pcg/sites/default/files/uploads/content/2026/IR%20Suite%202025/PCG%20FR2025%20%5BInteractive%20PDF%5D.pdf) plus a future, minimal project-owned **derived fixture** with page-level attribution. No official structured XLS/CSV has been identified for this fixture, so it must never be described as an official spreadsheet.
+
+Full PDFs will not be committed until reuse terms are checked. Setup-time downloads and minimal attributed factual rows are preferred. Selection of these public filings does not imply issuer endorsement.
+
+## Evidence principles
+
+- Preserve source provenance throughout the workflow.
+- Distinguish missing evidence from contradictory evidence.
+- Make the comparison rationale inspectable.
+- Prefer conservative classifications when extraction or matching is ambiguous.
+- Never present the prototype's output as a substitute for professional judgment.
+
+## Privacy boundary
+
+Only public hackathon fixtures may be sent to hosted Gemma 4. According to the current [Gemini API pricing and data-use terms](https://ai.google.dev/gemini-api/docs/pricing), free-tier limits may change and free-tier content may be used to improve Google products; the research did not identify a paid privacy tier for hosted Gemma 4. Proofline therefore makes no production privacy or PDPA-compliance claim and must never send confidential customer statements through this prototype path.
+
+## Repository map
+
+- [`PLAN.md`](PLAN.md) — researched six-hour prototype plan and open build decisions
+- [`docs/architecture/`](docs/architecture/) — architecture decision records (ADRs)
+- [`docs/decisions/`](docs/decisions/) — retained legacy ADR template from the repository bootstrap
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution and pull-request workflow
+- [`SECURITY.md`](SECURITY.md) — security policy and private reporting guidance
+
+## Getting started
+
+The extraction and model path is selected, but the UI/application runtime and runnable commands are not. They will be documented after those remaining decisions and dependencies are validated. Until then, use `PLAN.md` and `docs/architecture/` as the source of truth for project direction.
+
+## Contributing
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md). All material changes should be proposed through a focused pull request.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
