@@ -4,6 +4,8 @@ const SAFE_ERRORS = {
   CSRF_TOKEN_INVALID: "This review could not be verified. Refresh and try again.",
   DECLARED_MIME_MISMATCH: "The selected file type does not match its contents.",
   EXTERNAL_LINKS_NOT_ALLOWED: "Workbooks with external links are not accepted.",
+  PDF_MAPPING_REQUIRED: "The report layout needs a reviewed mapping before analysis can continue.",
+  WORKBOOK_MAPPING_REQUIRED: "The workbook layout needs a reviewed mapping before analysis can continue.",
   FILE_EXTENSION_NOT_ALLOWED: "Choose a PDF for the report and an XLSX workbook for evidence.",
   FILE_TOO_LARGE: "The selected file is larger than this demo accepts.",
   MACROS_NOT_ALLOWED: "Macro-enabled workbooks are not accepted.",
@@ -62,6 +64,13 @@ export function removeSource(session, fileId) {
 
 export function startSourceReview(session) {
   return request(`/api/sessions/${session.session_id}/start`, {
+    method: "POST",
+    headers: { "X-Proofline-CSRF": session.csrf_token },
+  });
+}
+
+export function analyzeSourceSession(session) {
+  return request(`/api/sessions/${encodeURIComponent(session.session_id)}/analysis`, {
     method: "POST",
     headers: { "X-Proofline-CSRF": session.csrf_token },
   });

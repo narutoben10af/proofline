@@ -30,11 +30,15 @@ components.
    `X-Proofline-CSRF`. Use the returned metadata as the authoritative `Ready` state.
 3. `GET /api/sessions/{id}/files` to refresh the list; authorized preview/download uses
    `GET /api/sessions/{id}/files/{file_id}/content?disposition=inline|attachment`.
-4. `DELETE /api/sessions/{id}/files/{file_id}` for Remove and
+4. `POST /api/sessions/{id}/analysis` to run the local, source-cited digital-text/XLSX path once
+   both files are `Ready`. Map `WORKBOOK_MAPPING_REQUIRED` and `PDF_MAPPING_REQUIRED` to a reviewed
+   mapping state; do not select a fixture on failure.
+5. `DELETE /api/sessions/{id}/files/{file_id}` for Remove and
    `DELETE /api/sessions/{id}` for the idempotent deletion receipt.
-5. `POST /api/sessions/{id}/start` only when both roles are ready. A
+6. `POST /api/sessions/{id}/start` only when both roles are ready for a future provider-backed
+   worker. A
    `PROVIDER_ACCESS_REQUIRED` response must expose the separate public-demo option.
-6. `GET /api/public-demo/{apple-fy2025|pcg-fy2025}` returns a checked-in hash-verified fixture
+7. `GET /api/public-demo/{apple-fy2025|pcg-fy2025}` returns a checked-in hash-verified fixture
    without requiring a model key.
 
 All session mutations use `credentials: "same-origin"` and `X-Proofline-CSRF`. The adapter uses

@@ -44,12 +44,13 @@ The encoded lineage is append-only:
 the exact four metric IDs, formula IDs, input roles, applicability notes, and v1 tolerances for
 fixture and frontend consumers.
 
-The analysis request begins at claims and observations because document ingestion is deliberately
-stubbable in this PR. Every analysis response repeats its documents, source spans, claims, and fact
-observations, so a frontend can resolve every finding and metric input without retaining the request
-or making another call. Referential-integrity validation rejects dangling document, span, claim, and
-observation provenance before analysis. Frontend consumers should key evidence by IDs and must not
-infer provenance from display text.
+The versioned analysis request begins at claims and observations so callers can supply reviewed
+evidence directly. The temporary byte-upload path additionally builds the same request from a
+validated digital-text PDF/XLSX pair. Every analysis response repeats its documents, source spans,
+claims, and fact observations, so a frontend can resolve every finding and metric input without
+retaining the request or making another call. Referential-integrity validation rejects dangling
+document, span, claim, and observation provenance before analysis. Frontend consumers should key
+evidence by IDs and must not infer provenance from display text.
 
 ## Typed calculation plans
 
@@ -77,9 +78,9 @@ current ratio. These are prototype decisions that require fixture review before 
 
 `SessionStatus` freezes `accepted`, `processing`, `completed`, and `failed` states, along with a
 typed processing-error list and `not_checked`, `available`, `in_use`, or `unavailable` cached-output
-status. `fallback_disclosure` must state whether cached output was selected and why. The implemented
-intake endpoint always returns `accepted` / `not_checked` and explicitly discloses that adapters are
-not implemented; it does not simulate progress or a cache hit.
+status. `fallback_disclosure` must state whether cached output was selected and why. The versioned
+`/api/v1/sessions` intake remains metadata-only; the separate byte-upload source session has an
+explicit local `/analysis` route and never simulates progress or a cache hit.
 
 The upload variant is metadata-only and rejects macro-enabled workbook extensions. Both input
 variants require an explicit `public_data_confirmed: true`. Signature/size/encryption validation
@@ -112,6 +113,13 @@ Listing, metadata, authorized content, removal and session deletion are never st
 See `source-file.schema.json`, `source-session.schema.json`, `source-session-create.schema.json` and
 `source-deletion-receipt.schema.json` for the response contracts. Errors use
 `{"reason_code": "STABLE_CODE"}` without parser traces or raw input.
+
+`POST /api/sessions/{id}/analysis` runs the local, issuer-agnostic digital-text PDF and structured
+XLSX path for the two validated files and returns the existing `AnalysisResponse` evidence graph. It
+accepts only explicit supported PDF claim sentences, rejects scanned, formula-bearing, unsupported,
+or ambiguous mappings, and never falls back to `/api/public-demo/{fixture_id}`. The response remains
+compatible with v1 calculator/report consumers; upload-normalized state and multi-span fields remain
+a future versioned contract.
 
 `DELETE /api/sessions/{id}` is idempotent for the capability holder. It returns a versioned scoped
 receipt and removes source bytes and active session metadata; only the minimal receipt tombstone is

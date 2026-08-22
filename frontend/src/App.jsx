@@ -7,7 +7,7 @@ import {
 } from "@phosphor-icons/react";
 import { ReviewDesk, downloadReviewedReport } from "./ReviewDesk";
 import { adaptProductContract, buildDeterministicDemoPdf, getAssistantAdapter, getAssistantChartSpecs, getProviderConnectionAdapter, getReviewedReportBundle, metricDefinitionRegistry, productFixture, requestReviewedPdf, runMagicStages } from "./product-contract";
-import { createSourceSession, uploadSource } from "./session-api";
+import { analyzeSourceSession, createSourceSession, uploadSource } from "./session-api";
 
 const TrendChart = lazy(() => import("./TrendChart"));
 
@@ -240,7 +240,7 @@ function CompanyPage({ data, onNavigate, onOpenAssistant, onOpenSource, reducedM
   );
 }
 
-function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, reducedMotion }) {
+function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady, reducedMotion }) {
   const inputRef = useRef(null);
   const [state, setState] = useState("empty");
   const [files, setFiles] = useState([]);
@@ -277,13 +277,16 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
         setSessionMessage("Choose one PDF financial report and one XLSX evidence workbook.");
         return;
       }
-      setState("loading");
+      setState("server-loading");
       setSessionMessage("Uploading and checking both files in the temporary private session.");
       try {
         const results = await Promise.all(selected.map((file) => uploadSource(session, file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook", file)));
         setFiles(results.map((item, index) => item?.display_name || item?.file?.display_name || selected[index]?.name).filter(Boolean));
+        setSessionMessage("Files passed validation. Building the source-cited analysis…");
+        const analysis = await analyzeSourceSession(session);
+        onAnalysisReady?.(analysis);
         setState("ready");
-        setSessionMessage("Both private-session files passed the source-library checks.");
+        setSessionMessage("Source-cited analysis ready. Open the company workspace to review it.");
       } catch (error) {
         setState("error");
         setSessionMessage(error instanceof Error ? error.message : "The files could not be checked safely.");
@@ -305,9 +308,9 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
     }
   };
   const liveRole = state === "error" ? "alert" : "status";
-  const heading = state === "ready" ? "Sources are ready." : state === "error" ? "The source set needs attention." : state === "loading" ? session ? "Uploading and checking sources." : "Following the fixture evidence trail." : session ? "Add the two required files." : "Try the verified fixture.";
+  const heading = state === "ready" ? "Sources are ready." : state === "error" ? "The source set needs attention." : state === "loading" || state === "server-loading" ? session ? "Uploading, checking, and analyzing sources." : "Following the fixture evidence trail." : session ? "Add the two required files." : "Try the verified fixture.";
   const detail = sessionMessage || (state === "error" ? `The filenames did not match ${expectedCopy}. Nothing was uploaded, read, or retained.` : session ? "Choose one PDF financial report and one XLSX evidence workbook." : `The demo only checks the filenames ${expectedCopy}; it does not read or upload their contents.`);
-  const slotStatus = state === "error" ? "Needs attention" : state === "loading" ? "Checking" : state === "ready" ? "Ready" : "Waiting";
+  const slotStatus = state === "error" ? "Needs attention" : state === "loading" || state === "server-loading" ? "Checking" : state === "ready" ? "Ready" : "Waiting";
   return (
     <div className="route-page files-sources-page">
       <PageHeader eyebrow="Files & Sources" title="Bring the report and the numbers together." description="Start with the verified fixture or open a temporary private session when the source service is available." actions={<StatusTag tone={session ? "success" : "neutral"}>{session ? "Private session" : "Public fixture"}</StatusTag>} />
@@ -319,7 +322,7 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
           <p>{detail}</p>
         </div>
         <input ref={inputRef} className="visually-hidden" tabIndex="-1" aria-label={session ? "Select financial report PDF and evidence workbook" : "Select the two named demo files"} type="file" multiple accept=".pdf,.xlsx" onChange={(event) => choose([...event.target.files])} />
-        {state === "loading" && (session ? <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>Uploading · Checking</strong><small>Ready only after the server accepts both canonical file types.</small></div> : <RunMagicProgress stage={stage} complete={false} />)}
+        {(state === "loading" || state === "server-loading") && (session ? <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>Uploading · Checking · Analyzing</strong><small>Ready only after the server accepts both files and returns a source-cited analysis.</small></div> : <RunMagicProgress stage={stage} complete={false} />)}
         <div className="file-slot-grid" aria-label="Required review files">
           {[{ role: "report_pdf", label: "Financial report", kind: "PDF", name: files.find((name) => name.toLowerCase().endsWith(".pdf")) || expected.find((name) => name.toLowerCase().endsWith(".pdf")) }, { role: "workbook", label: "Evidence workbook", kind: "XLSX", name: files.find((name) => name.toLowerCase().endsWith(".xlsx")) || expected.find((name) => name.toLowerCase().endsWith(".xlsx")) }].map((slot) => <article className="file-slot" key={slot.role}><span className="file-kind">{slot.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{slot.kind}</span><div><h3>{slot.label}</h3><p>{slot.name || "No file selected"}</p></div><StatusTag tone={state === "ready" ? "success" : state === "error" ? "warning" : "neutral"}>{slotStatus}</StatusTag>{files.length > 0 && state !== "loading" && <button className="inline-link" type="button" onClick={() => { setFiles((current) => current.filter((name) => name !== slot.name)); setState("empty"); }}>Remove</button>}</article>)}
         </div>
@@ -507,20 +510,21 @@ function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistan
   const [sessionCleared, setSessionCleared] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(() => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches || false);
   const [compactSources, setCompactSources] = useState(false);
+  const [analysisData, setAnalysisData] = useState(productData);
   const assistantButtonRef = useRef(null);
   const assistantReturnRef = useRef(null);
   const sourceReturnRef = useRef(null);
   const mobileMenuButtonRef = useRef(null);
   const mobilePanelRef = useRef(null);
   useDismissible(mobileOpen, () => setMobileOpen(false), mobileMenuButtonRef, mobilePanelRef);
-  const data = adaptProductContract(productData);
+  const data = adaptProductContract(analysisData);
   const openSource = (item, trigger) => { sourceReturnRef.current = trigger || document.activeElement; setSource(item); };
   const openAssistant = (trigger) => { assistantReturnRef.current = trigger || document.activeElement; setMobileOpen(false); setAssistantOpen(true); };
   const restoreFixture = () => { setSessionCleared(false); onNavigate("/company"); };
   const pages = {
     "/": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} reducedMotion={reducedMotion} />,
     "/company": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} reducedMotion={reducedMotion} />,
-    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => setSessionCleared(false)} reducedMotion={reducedMotion} />,
+    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => setSessionCleared(false)} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} reducedMotion={reducedMotion} />,
     "/history": <HistoryPage data={data} onNavigate={onNavigate} />,
     "/review": <ReviewDesk onClearSession={() => setSessionCleared(true)} productData={data} />,
     "/reports": <ReportsPage data={data} onNavigate={onNavigate} />,

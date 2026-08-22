@@ -48,6 +48,7 @@ from proofline.reports import (
 from proofline.service import analyze
 from proofline.sessions import SessionStore
 from proofline.source_library import LibraryError, SessionRecord, SourceLibraryStore, Tombstone
+from proofline.upload_analysis import UploadAnalysisError, analyze_uploaded_evidence
 
 CAPABILITY_COOKIE = "__Host-proofline_capability"
 FIXTURE_ROOT = Path(__file__).parents[2] / "fixtures" / "financial"
@@ -396,6 +397,35 @@ def remove_source_file(request: Request, session_id: str, file_id: str) -> Sourc
 def start_source_review(request: Request, session_id: str) -> SourceSessionStatus:
     record = authorized_session(request, session_id, mutate=True)
     return source_store(request).start(record)
+
+
+@app.post(
+    "/api/sessions/{session_id}/analysis",
+    response_model=AnalysisResponse,
+    tags=["source-library", "analysis"],
+)
+def analyze_source_session(request: Request, session_id: str) -> AnalysisResponse:
+    """Analyze one authorized, validated PDF/XLSX pair without consulting demo fixtures."""
+
+    record = authorized_session(request, session_id, mutate=True)
+    metadata = source_store(request).list_files(record)
+    pdf_metadata = next((item for item in metadata if item.role == "report_pdf"), None)
+    workbook_metadata = next((item for item in metadata if item.role == "workbook"), None)
+    if pdf_metadata is None or workbook_metadata is None:
+        raise LibraryError("REQUIRED_FILES_NOT_READY", 409)
+    pdf = source_store(request).get_file(record, pdf_metadata.file_id)
+    workbook = source_store(request).get_file(record, workbook_metadata.file_id)
+    try:
+        return analyze_uploaded_evidence(
+            pdf_content=pdf.path.read_bytes(),
+            workbook_content=workbook.path.read_bytes(),
+            session_id=record.session_id,
+            pdf_file_id=pdf.metadata.file_id,
+            workbook_file_id=workbook.metadata.file_id,
+            retrieved_at=max(pdf.metadata.uploaded_at, workbook.metadata.uploaded_at),
+        )
+    except UploadAnalysisError as error:
+        raise LibraryError(error.code, 422) from error
 
 
 @app.delete(

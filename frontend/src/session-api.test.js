@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  analyzeSourceSession,
   createSourceSession,
   deleteSourceSession,
   getSourceSession,
@@ -38,13 +39,18 @@ describe("Source Library API adapter", () => {
     const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" });
 
     await uploadSource(session, "report_pdf", file);
+    await analyzeSourceSession(session);
     await deleteSourceSession(session);
 
     expect(fetchMock.mock.calls[0][1].headers).toEqual({
       "X-Proofline-CSRF": "csrf-memory-only",
     });
     expect(fetchMock.mock.calls[0][1].body.get("role")).toBe("report_pdf");
-    expect(fetchMock.mock.calls[1][1]).toEqual(
+    expect(fetchMock.mock.calls[1]).toEqual([
+      "/api/sessions/src-opaque/analysis",
+      expect.objectContaining({ method: "POST", headers: { "X-Proofline-CSRF": "csrf-memory-only" } }),
+    ]);
+    expect(fetchMock.mock.calls[2][1]).toEqual(
       expect.objectContaining({
         method: "DELETE",
         credentials: "same-origin",
