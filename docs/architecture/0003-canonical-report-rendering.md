@@ -27,6 +27,17 @@ The renderer is pure: it does not access the network, adapters, metric calculati
 or storage. Invalid IDs, counts, evidence hash, context, trend comparability, cache disclosure, or
 forecast markers reject the bundle before PDF bytes are returned.
 
+Report identity is bound fail-closed: a bundle requires a non-empty single document-issuer set,
+that issuer must equal the bundle company, the company ID must match either the checked-in fixture
+registry or a company-derived slug, and populated claim entities must match. A fixed
+company-qualified title prevents independent report rebranding.
+
+All client-controlled narrative fields presented by the report pass through one deterministic
+policy boundary that rejects causal attribution, investment recommendations or directives, and
+forward-looking language. Suggested investigations use only the classifier's three exact review
+actions. Attributed evidence quotes and spreadsheet display values are preserved as evidence rather
+than treated as Proofline assertions. Canonical JSON rejects non-string mapping keys before sorting.
+
 ## Consequences
 
 - PDF and reviewed JSON exports share one validated evidence boundary.

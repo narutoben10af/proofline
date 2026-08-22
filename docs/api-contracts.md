@@ -108,5 +108,15 @@ The typed ReportLab renderer uses only core fonts and deterministic invariant mo
 XML-like source text and represents unsupported core-font glyphs as stable `[U+XXXX]` markers. It
 does not fetch official sources, recalculate analysis, refresh context, or render forecasts.
 
+The report policy boundary rejects causal attribution, investment advice, directives, and
+forward-looking language in every client-controlled narrative field rendered as report content.
+The title is fixed to `<company> reviewed evidence report`, and `suggested_investigation` accepts
+only the three deterministic review actions emitted by the classifier. Explicitly attributed PDF
+quotes and spreadsheet display values remain verbatim evidence and are not rewritten. Every report
+must contain at least one document, all documents must have the same issuer, that issuer must equal
+`bundle.company`, `company_id` must match the registered fixture or a company-derived slug, and any
+claim entity must match the same company. Canonical mappings reject non-string keys before sorting
+so malformed inputs fail deterministically rather than raising an order-dependent sort error.
+
 Deletion applies only to application-managed session storage. It does not provide secure erasure,
 delete data held by providers, or remove PDF or JSON exports already downloaded by users.

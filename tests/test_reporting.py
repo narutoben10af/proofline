@@ -133,6 +133,16 @@ def _mutated_bundle(**updates) -> dict:
     return raw
 
 
+def _rehash_analysis(raw: dict) -> None:
+    raw["snapshot"]["evidence_chain_sha256"] = canonical_sha256(
+        AnalysisResponse.model_validate(raw["analysis"])
+    )
+
+
+def _post_report(raw: dict):
+    return TestClient(app).post("/api/v1/reports/pdf", json=raw)
+
+
 def test_pdf_is_byte_deterministic_and_sections_are_ordered() -> None:
     bundle = _bundle()
     first = render_pdf(bundle)
@@ -235,11 +245,160 @@ def test_report_requires_a_hero_finding() -> None:
 def test_uncited_causal_language_in_generated_finding_text_is_rejected() -> None:
     raw = _bundle().model_dump(mode="json")
     raw["analysis"]["findings"][0]["rationale"] = "The variance was driven by inflation."
-    raw["snapshot"]["evidence_chain_sha256"] = canonical_sha256(
-        AnalysisResponse.model_validate(raw["analysis"])
-    )
+    _rehash_analysis(raw)
     with pytest.raises(ValidationError, match="finding rationale contains prohibited"):
         ReportRenderBundle.model_validate(raw)
+
+
+@pytest.mark.parametrize(
+    "unsafe_text",
+    (
+        "Inflation caused the variance.",
+        "The variance occurred because inflation rose.",
+        "Inflation led to the variance.",
+        "We recommend buying shares.",
+        "Investors should buy shares.",
+        "Revenue will rise next year.",
+        "The reviewer must hold the shares.",
+        "This is investment advice.",
+    ),
+)
+def test_endpoint_rejects_causal_advisory_imperative_and_forecast_text(
+    unsafe_text: str,
+) -> None:
+    raw = _bundle().model_dump(mode="json")
+    raw["snapshot"]["limitations"] = [unsafe_text]
+
+    response = _post_report(raw)
+
+    assert response.status_code == 422
+    assert response.headers["content-type"].startswith("application/json")
+
+
+@pytest.mark.parametrize(
+    ("mutate", "rehash"),
+    (
+        (
+            lambda raw: raw["analysis"]["claims"][0].update(
+                {"text": "Inflation caused the variance."}
+            ),
+            True,
+        ),
+        (
+            lambda raw: raw["analysis"]["findings"][0].update(
+                {"rationale": "The variance was due to inflation."}
+            ),
+            True,
+        ),
+        (
+            lambda raw: raw["analysis"]["findings"][0].update(
+                {"suggested_investigation": "Revenue will rise next year."}
+            ),
+            True,
+        ),
+        (
+            lambda raw: raw["analysis"]["metric_results"][0].update(
+                {"warnings": ["Investors should sell shares."]}
+            ),
+            True,
+        ),
+        (
+            lambda raw: raw["analysis"]["findings"][0].update(
+                {"warnings": ["We recommend buying shares."]}
+            ),
+            True,
+        ),
+        (
+            lambda raw: raw["analysis"]["documents"][0].update(
+                {"version_label": "Projected revenue outlook"}
+            ),
+            True,
+        ),
+        (
+            lambda raw: raw["snapshot"].update({"title": "Buy Apple shares now"}),
+            False,
+        ),
+        (
+            lambda raw: raw["economic_context"][0].update(
+                {"relevance": "Prices increased because demand rose."}
+            ),
+            False,
+        ),
+        (
+            lambda raw: raw["economic_context"][0].update(
+                {"comparability_warning": "Revenue will rise next year."}
+            ),
+            False,
+        ),
+        (
+            lambda raw: raw["trend"].update({"indicator": "Recommended revenue outlook"}),
+            False,
+        ),
+        (
+            lambda raw: raw["trend"]["points"][0].update({"reporting_basis": "Projected revenue"}),
+            False,
+        ),
+        (
+            lambda raw: raw.update(
+                {
+                    "source_mode": "verified_cached",
+                    "source_disclosure": "Revenue will rise next year.",
+                }
+            ),
+            False,
+        ),
+    ),
+)
+def test_endpoint_rejects_policy_bypasses_across_rendered_fields(mutate, rehash: bool) -> None:
+    raw = _bundle().model_dump(mode="json")
+    mutate(raw)
+    if rehash:
+        _rehash_analysis(raw)
+
+    response = _post_report(raw)
+
+    assert response.status_code == 422
+
+
+def test_endpoint_rejects_cross_company_and_mixed_issuer_provenance() -> None:
+    relabeled = _bundle().model_dump(mode="json")
+    relabeled["company_id"] = "apple-fy2025"
+    relabeled["company"] = "Apple Inc."
+    relabeled["snapshot"]["title"] = "Apple Inc. reviewed evidence report"
+    relabeled["trend"]["company"] = "Apple Inc."
+    relabeled["economic_context"][0]["company"] = "Apple Inc."
+    response = _post_report(relabeled)
+    assert response.status_code == 422
+    assert "issuer must match bundle company" in response.text
+
+    mixed = _bundle().model_dump(mode="json")
+    mixed["analysis"]["documents"][1]["issuer"] = "Other Issuer"
+    _rehash_analysis(mixed)
+    response = _post_report(mixed)
+    assert response.status_code == 422
+    assert "documents must use one issuer" in response.text
+
+    empty = _bundle().model_dump(mode="json")
+    empty["analysis"]["documents"] = []
+    _rehash_analysis(empty)
+    response = _post_report(empty)
+    assert response.status_code == 422
+    assert "at least one issuer-bearing document" in response.text
+
+
+def test_endpoint_binds_company_id_and_claim_entity() -> None:
+    company_id_mismatch = _bundle().model_dump(mode="json")
+    company_id_mismatch["company_id"] = "apple-fy2025"
+    response = _post_report(company_id_mismatch)
+    assert response.status_code == 422
+    assert "registered company" in response.text
+
+    entity_mismatch = _bundle().model_dump(mode="json")
+    entity_mismatch["analysis"]["claims"][0]["entity"] = "Other Issuer"
+    _rehash_analysis(entity_mismatch)
+    response = _post_report(entity_mismatch)
+    assert response.status_code == 422
+    assert "claim entity must match bundle company" in response.text
 
 
 def test_invalid_context_and_forecasts_are_rejected() -> None:
@@ -285,13 +444,17 @@ def test_chart_and_value_table_use_the_same_validated_points() -> None:
 
 def test_xml_like_long_and_unicode_source_text_is_safe() -> None:
     raw = _analysis().model_dump(mode="json")
-    raw["source_spans"][0]["source"]["quote"] = '<tag attr="x"> Montréal & 中 😊 ' + "A" * 500
+    raw["source_spans"][0]["source"]["quote"] = (
+        '<tag attr="x"> Montréal & 中 😊 Inflation caused the variance; analyst said buy. '
+        + "A" * 500
+    )
     response = AnalysisResponse.model_validate(raw)
     text = _text(render_pdf(_bundle(analysis=response)))
     assert "<tag attr=" in text
     assert "Montréal" in text
     assert "[U+4E2D]" in text
     assert "[U+1F60A]" in text
+    assert "Inflation caused the variance; analyst said buy." in " ".join(text.split())
 
 
 def test_renderer_never_fetches_or_recalculates(monkeypatch) -> None:
@@ -344,7 +507,18 @@ def test_same_endpoint_preserves_json_evidence_export_fallback() -> None:
 
 def test_generated_policy_language_is_narrow_and_non_causal() -> None:
     text = _text(render_pdf(_bundle())).lower()
-    for phrase in ("driven by", "resulted in", "explains", "pdpa compliant"):
+    for phrase in (
+        "caused",
+        "because",
+        "driven by",
+        "led to",
+        "resulted in",
+        "explains",
+        "recommend buying",
+        "should buy",
+        "will rise",
+        "pdpa compliant",
+    ):
         assert phrase not in text
     assert "secure erasure" in text
     assert "does not provide secure erasure" in text
@@ -362,3 +536,9 @@ def test_decimal_and_timestamp_canonicalization() -> None:
     assert canonical_json_bytes({"at": datetime(2026, 8, 22, 8, 0, 0, 123400, offset)}) == (
         b'{"at":"2026-08-22T00:00:00.1234Z"}'
     )
+
+
+def test_canonical_json_rejects_non_string_mapping_keys_deterministically() -> None:
+    for value in ({"1": "string", 1: "number"}, {1: "number", "1": "string"}):
+        with pytest.raises(TypeError, match="canonical mappings require string keys"):
+            canonical_json_bytes(value)
