@@ -257,9 +257,7 @@ def test_cross_session_and_csrf_origin_access_is_denied() -> None:
             data={"role": "report_pdf"},
             files={"file": ("report.pdf", pdf_bytes(), PDF_MIME)},
         )
-        client.cookies.set(
-            CAPABILITY_COOKIE, first_capability, domain="testserver.local", path="/"
-        )
+        client.cookies.set(CAPABILITY_COOKIE, first_capability, domain="testserver.local", path="/")
         own_list = client.get(f"/api/sessions/{first['session_id']}/files")
 
     assert cross_list.status_code == 404
@@ -317,8 +315,7 @@ def test_macro_external_link_and_zip_bomb_workbooks_are_rejected() -> None:
             xlsx_bytes(
                 extra_entries={
                     "xl/_rels/workbook.xml.rels": (
-                        b'<Relationships><Relationship TargetMode = "External"/>'
-                        b"</Relationships>"
+                        b'<Relationships><Relationship TargetMode = "External"/></Relationships>'
                     )
                 }
             ),
@@ -360,7 +357,7 @@ def test_macro_external_link_and_zip_bomb_workbooks_are_rejected() -> None:
                 extra_entries={
                     "xl/_rels/renamed.rels": (
                         b'<Relationships><Relationship Type="http://schemas.'
-                        b'openxmlformats.org/officeDocument/2006/relationships/'
+                        b"openxmlformats.org/officeDocument/2006/relationships/"
                         b'externalLink" Target="local.xml"/></Relationships>'
                     )
                 }
@@ -532,9 +529,7 @@ def test_pypdf_controlled_messages_are_suppressed(tmp_path: Path, caplog) -> Non
 def test_probe_that_exceeds_deadline_is_rejected(tmp_path: Path, monkeypatch) -> None:
     path = tmp_path / "probe.pdf"
     path.write_bytes(pdf_bytes())
-    store = SourceLibraryStore(
-        root=tmp_path / "managed", probe_timeout_seconds=0.001
-    )
+    store = SourceLibraryStore(root=tmp_path / "managed", probe_timeout_seconds=0.001)
 
     def slow_probe(_path: Path, _started: float) -> None:
         time.sleep(0.01)
@@ -603,9 +598,7 @@ def test_start_rechecks_expiry_and_never_simulates_processing(tmp_path: Path) ->
     assert fresh_record.state == "OPEN"
 
 
-def test_concurrent_upload_cannot_recreate_files_after_delete(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_concurrent_upload_cannot_recreate_files_after_delete(tmp_path: Path, monkeypatch) -> None:
     store = SourceLibraryStore(root=tmp_path / "managed")
     created, capability = store.create()
     record = store._sessions[created.session_id]
@@ -630,9 +623,7 @@ def test_concurrent_upload_cannot_recreate_files_after_delete(
         result["file"] = asyncio.run(store.upload(record, "report_pdf", upload))
 
     def run_delete() -> None:
-        result["receipt"] = store.delete(
-            created.session_id, capability, created.csrf_token
-        )
+        result["receipt"] = store.delete(created.session_id, capability, created.csrf_token)
 
     upload_thread = threading.Thread(target=run_upload)
     delete_thread = threading.Thread(target=run_delete)

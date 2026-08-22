@@ -338,9 +338,7 @@ class SourceLibraryStore:
             if tombstone and hmac.compare_digest(tombstone.capability_digest, capability_digest):
                 if require_csrf and (
                     not csrf_token
-                    or not hmac.compare_digest(
-                        tombstone.csrf_digest, self._digest(csrf_token)
-                    )
+                    or not hmac.compare_digest(tombstone.csrf_digest, self._digest(csrf_token))
                 ):
                     raise LibraryError("CSRF_TOKEN_INVALID", 403)
                 if allow_deleted:
@@ -353,9 +351,7 @@ class SourceLibraryStore:
             if allow_deleted and record.deletion_receipt is not None:
                 if require_csrf and (
                     not csrf_token
-                    or not hmac.compare_digest(
-                        record.csrf_digest, self._digest(csrf_token)
-                    )
+                    or not hmac.compare_digest(record.csrf_digest, self._digest(csrf_token))
                 ):
                     raise LibraryError("CSRF_TOKEN_INVALID", 403)
                 return Tombstone(

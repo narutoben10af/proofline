@@ -345,9 +345,9 @@ class SourceDeletionReceipt(FrozenModel):
     removed: dict[Literal["source_files", "derived_artifacts", "session_metadata"], RemovalCount]
     app_managed_directory_gone: bool
     source_material_sent_to_provider: bool
-    claim: Literal[
+    claim: Literal["Deleted from this running container’s application-managed session storage."] = (
         "Deleted from this running container’s application-managed session storage."
-    ] = "Deleted from this running container’s application-managed session storage."
+    )
     exclusions: tuple[
         Literal[
             "immutable fixtures",

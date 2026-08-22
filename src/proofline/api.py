@@ -64,14 +64,14 @@ class RequestSizeLimitMiddleware:
         if content_length:
             try:
                 if int(content_length) > self.max_bytes:
-                    await JSONResponse(
-                        {"reason_code": "REQUEST_TOO_LARGE"}, status_code=413
-                    )(scope, receive, send)
+                    await JSONResponse({"reason_code": "REQUEST_TOO_LARGE"}, status_code=413)(
+                        scope, receive, send
+                    )
                     return
             except ValueError:
-                await JSONResponse(
-                    {"reason_code": "CONTENT_LENGTH_INVALID"}, status_code=400
-                )(scope, receive, send)
+                await JSONResponse({"reason_code": "CONTENT_LENGTH_INVALID"}, status_code=400)(
+                    scope, receive, send
+                )
                 return
         received = 0
 
@@ -87,9 +87,9 @@ class RequestSizeLimitMiddleware:
         try:
             await self.app(scope, bounded_receive, send)
         except LibraryError as error:
-            await JSONResponse(
-                {"reason_code": error.reason_code}, status_code=error.status_code
-            )(scope, receive, send)
+            await JSONResponse({"reason_code": error.reason_code}, status_code=error.status_code)(
+                scope, receive, send
+            )
 
 
 class SessionNoStoreMiddleware:
@@ -308,9 +308,7 @@ async def upload_source_file(
     response_model=SourceFileMetadata,
     tags=["source-library"],
 )
-def get_source_file_metadata(
-    request: Request, session_id: str, file_id: str
-) -> SourceFileMetadata:
+def get_source_file_metadata(request: Request, session_id: str, file_id: str) -> SourceFileMetadata:
     record = authorized_session(request, session_id)
     return source_store(request).get_file(record, file_id).metadata
 
@@ -345,9 +343,7 @@ def get_source_file_content(
     response_model=SourceFileMetadata,
     tags=["source-library"],
 )
-def remove_source_file(
-    request: Request, session_id: str, file_id: str
-) -> SourceFileMetadata:
+def remove_source_file(request: Request, session_id: str, file_id: str) -> SourceFileMetadata:
     record = authorized_session(request, session_id, mutate=True)
     return source_store(request).remove_file(record, file_id)
 
@@ -367,9 +363,7 @@ def start_source_review(request: Request, session_id: str) -> SourceSessionStatu
     response_model=SourceDeletionReceipt,
     tags=["source-library"],
 )
-def delete_source_session(
-    request: Request, session_id: str
-) -> SourceDeletionReceipt:
+def delete_source_session(request: Request, session_id: str) -> SourceDeletionReceipt:
     require_same_origin(request)
     receipt = source_store(request).delete(
         session_id,
