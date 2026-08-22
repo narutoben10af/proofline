@@ -7,7 +7,7 @@ from typing import Any, Literal, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlparse
 from urllib.request import Request, urlopen
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from proofline.config import Settings
 from proofline.source_library import ProcessSessionRepository, SessionRepository
@@ -155,16 +155,13 @@ def source_session_repository(
 
 
 class AnalysisPersistenceRepository(Protocol):
-    def create_session(
-        self, *, now: datetime | None = None, idle_ttl: timedelta, absolute_ttl: timedelta
-    ) -> dict[str, Any]: ...
+    def create_session(self) -> dict[str, Any]: ...
 
     def get_session(self, session_id: UUID) -> dict[str, Any] | None: ...
+    def touch_session(self, session_id: UUID) -> dict[str, Any]: ...
     def list_documents(self, session_id: UUID) -> list[dict[str, Any]]: ...
-    def upsert_document(self, document: dict[str, Any]) -> dict[str, Any]: ...
-    def request_delete(self, session_id: UUID, requested_at: datetime) -> dict[str, Any]: ...
-    def delete_document_metadata_after_object(self, document_id: UUID) -> bool: ...
-    def delete_session_metadata_after_objects(self, session_id: UUID) -> bool: ...
+    def register_document(self, document: dict[str, Any]) -> dict[str, Any]: ...
+    def request_delete(self, session_id: UUID) -> dict[str, Any]: ...
 
 
 class PrivateObjectStore(Protocol):
@@ -226,7 +223,9 @@ class _SupabaseApiClient:
 
 
 def _json_default(value: object) -> str:
-    if isinstance(value, UUID | datetime):
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, datetime):
         return value.isoformat()
     raise TypeError(f"unsupported JSON type: {type(value).__name__}")
 
@@ -239,6 +238,18 @@ def _json_rows(result: HttpResult) -> list[dict[str, Any]]:
     if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
         raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502)
     return value
+
+
+def _json_single(result: HttpResult) -> dict[str, Any]:
+    try:
+        value = json.loads(result.body or b"null")
+    except json.JSONDecodeError as error:
+        raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502) from error
+    if isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict):
+        return value[0]
+    if isinstance(value, dict):
+        return value
+    raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502)
 
 
 class SupabaseAnalysisRepository:
@@ -260,36 +271,10 @@ class SupabaseAnalysisRepository:
             transport=transport or UrllibHttpTransport(),
         )
 
-    def create_session(
-        self,
-        *,
-        now: datetime | None = None,
-        idle_ttl: timedelta = timedelta(minutes=30),
-        absolute_ttl: timedelta = timedelta(hours=2),
-    ) -> dict[str, Any]:
-        now = now or datetime.now(UTC)
-        session_id = uuid4()
-        payload = {
-            "id": session_id,
-            "owner_id": self.user.owner_id,
-            "state": "OPEN",
-            "created_at": now,
-            "updated_at": now,
-            "last_activity_at": now,
-            "idle_expires_at": min(now + idle_ttl, now + absolute_ttl),
-            "absolute_expires_at": now + absolute_ttl,
-        }
-        rows = _json_rows(
-            self.client.request(
-                "POST",
-                "/rest/v1/analysis_sessions",
-                payload=payload,
-                prefer="return=representation",
-            )
+    def create_session(self) -> dict[str, Any]:
+        return _json_single(
+            self.client.request("POST", "/rest/v1/rpc/create_analysis_session", payload={})
         )
-        if len(rows) != 1:
-            raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502)
-        return rows[0]
 
     def get_session(self, session_id: UUID) -> dict[str, Any] | None:
         rows = _json_rows(
@@ -306,6 +291,15 @@ class SupabaseAnalysisRepository:
         )
         return rows[0] if rows else None
 
+    def touch_session(self, session_id: UUID) -> dict[str, Any]:
+        return _json_single(
+            self.client.request(
+                "POST",
+                "/rest/v1/rpc/touch_analysis_session",
+                payload={"target_session_id": session_id},
+            )
+        )
+
     def list_documents(self, session_id: UUID) -> list[dict[str, Any]]:
         return _json_rows(
             self.client.request(
@@ -320,76 +314,47 @@ class SupabaseAnalysisRepository:
             )
         )
 
-    def upsert_document(self, document: dict[str, Any]) -> dict[str, Any]:
-        document_id = UUID(str(document["id"]))
-        session_id = UUID(str(document["session_id"]))
-        expected_path = object_path(self.user.owner_id, session_id, document_id)
-        if document.get("owner_id") != str(self.user.owner_id):
-            raise PersistenceError("DOCUMENT_OWNER_INVALID")
-        if document.get("storage_object_path") != expected_path:
-            raise PersistenceError("DOCUMENT_OBJECT_PATH_INVALID")
-        rows = _json_rows(
+    def register_document(self, document: dict[str, Any]) -> dict[str, Any]:
+        server_fields = {
+            "owner_id",
+            "storage_object_path",
+            "validation_status",
+            "validated_at",
+            "uploaded_at",
+            "expires_at",
+        }
+        allowed_fields = {
+            "id",
+            "session_id",
+            "role",
+            "display_name",
+            "canonical_type",
+            "byte_count",
+            "content_sha256",
+        }
+        if server_fields.intersection(document) or set(document) != allowed_fields:
+            raise PersistenceError("DOCUMENT_SERVER_FIELDS_FORBIDDEN")
+        payload = {
+            "target_session_id": UUID(str(document["session_id"])),
+            "target_document_id": UUID(str(document["id"])),
+            "document_role": document["role"],
+            "document_display_name": document["display_name"],
+            "document_canonical_type": document["canonical_type"],
+            "document_byte_count": document["byte_count"],
+            "document_content_sha256": document["content_sha256"],
+        }
+        return _json_single(
+            self.client.request("POST", "/rest/v1/rpc/register_source_document", payload=payload)
+        )
+
+    def request_delete(self, session_id: UUID) -> dict[str, Any]:
+        return _json_single(
             self.client.request(
                 "POST",
-                "/rest/v1/documents",
-                query={"on_conflict": "id"},
-                payload=document,
-                prefer="resolution=merge-duplicates,return=representation",
+                "/rest/v1/rpc/request_analysis_session_deletion",
+                payload={"target_session_id": session_id},
             )
         )
-        if len(rows) != 1:
-            raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502)
-        return rows[0]
-
-    def request_delete(self, session_id: UUID, requested_at: datetime) -> dict[str, Any]:
-        rows = _json_rows(
-            self.client.request(
-                "PATCH",
-                "/rest/v1/analysis_sessions",
-                query={
-                    "id": f"eq.{session_id}",
-                    "owner_id": f"eq.{self.user.owner_id}",
-                    "state": "in.(OPEN,PROCESSING)",
-                },
-                payload={
-                    "state": "DELETING",
-                    "updated_at": requested_at,
-                    "deletion_requested_at": requested_at,
-                },
-                prefer="return=representation",
-            )
-        )
-        if len(rows) != 1:
-            raise PersistenceError("SUPABASE_SESSION_NOT_OPEN", 409)
-        return rows[0]
-
-    def delete_document_metadata_after_object(self, document_id: UUID) -> bool:
-        rows = _json_rows(
-            self.client.request(
-                "DELETE",
-                "/rest/v1/documents",
-                query={
-                    "id": f"eq.{document_id}",
-                    "owner_id": f"eq.{self.user.owner_id}",
-                },
-                prefer="return=representation",
-            )
-        )
-        return len(rows) == 1
-
-    def delete_session_metadata_after_objects(self, session_id: UUID) -> bool:
-        rows = _json_rows(
-            self.client.request(
-                "DELETE",
-                "/rest/v1/analysis_sessions",
-                query={
-                    "id": f"eq.{session_id}",
-                    "owner_id": f"eq.{self.user.owner_id}",
-                },
-                prefer="return=representation",
-            )
-        )
-        return len(rows) == 1
 
 
 class SupabasePrivateObjectStore:
@@ -483,6 +448,53 @@ class SupabaseServerMaintenanceRepository:
         )
         if len(rows) != 1:
             raise PersistenceError("SUPABASE_SESSION_NOT_FOUND", 404)
+
+    def mark_document_validation(
+        self,
+        *,
+        document_id: UUID,
+        owner_id: UUID,
+        status: Literal["Ready", "Needs attention"],
+        canonical_type: str,
+        byte_count: int,
+        content_sha256: str,
+        validated_at: datetime,
+    ) -> dict[str, Any]:
+        if status not in {"Ready", "Needs attention"}:
+            raise PersistenceError("DOCUMENT_VALIDATION_STATUS_INVALID")
+        if canonical_type not in {
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }:
+            raise PersistenceError("DOCUMENT_CANONICAL_TYPE_INVALID")
+        if not 1 <= byte_count <= 20 * 1024 * 1024:
+            raise PersistenceError("DOCUMENT_BYTE_COUNT_INVALID")
+        if len(content_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in content_sha256
+        ):
+            raise PersistenceError("DOCUMENT_DIGEST_INVALID")
+        rows = _json_rows(
+            self.client.request(
+                "PATCH",
+                "/rest/v1/documents",
+                query={
+                    "id": f"eq.{document_id}",
+                    "owner_id": f"eq.{owner_id}",
+                    "validation_status": "eq.Checking",
+                },
+                payload={
+                    "validation_status": status,
+                    "canonical_type": canonical_type,
+                    "byte_count": byte_count,
+                    "content_sha256": content_sha256,
+                    "validated_at": validated_at,
+                },
+                prefer="return=representation",
+            )
+        )
+        if len(rows) != 1:
+            raise PersistenceError("SUPABASE_DOCUMENT_NOT_CHECKING", 409)
+        return rows[0]
 
     def list_expired_sessions(self, *, now: datetime, limit: int = 100) -> list[dict[str, Any]]:
         if not 1 <= limit <= 500:

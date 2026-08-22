@@ -22,6 +22,10 @@ No statement here is a production-security, confidential-data, secure-erasure or
   The API selects its existing `SessionRepository` through this boundary. It returns the
   process-local repository by default and fails closed if Supabase is selected before Auth can
   provide an owner and UUID session mapping; it never auto-activates remote persistence.
+- Authenticated tables are read-only. Narrow `SECURITY DEFINER` RPCs (empty `search_path`, explicit
+  schema qualification, explicit EXECUTE grants) derive owner, clocks, fixed expiry, initial
+  `Checking` state and canonical object paths. Only backend service-role orchestration may author
+  `Ready`/`Needs attention`, analysis status, provider-sent state, completion or receipts.
 - `supabase/tests/source_library_rls.sql` proves that user A cannot read or delete user B's session,
   document or Storage object in a disposable local database.
 
@@ -91,6 +95,9 @@ provider transfer, including attempts that later fail.
 ## TTL and deletion receipts
 
 The intended defaults remain 30 minutes idle, two hours absolute and two hours receipt retention.
+Neither an authenticated client nor a touch RPC can extend `absolute_expires_at`; direct INSERT,
+UPDATE and DELETE privileges on lifecycle tables are absent. Anonymous and anonymous-Auth users are
+denied. The client may upload only after a server-authored `Checking` document locator exists.
 A reviewed backend maintenance job must find expired sessions using the server-only secret and run
 the same ordered deletion coordinator as an explicit user deletion:
 

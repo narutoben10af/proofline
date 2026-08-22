@@ -31,6 +31,13 @@ analysis snapshot hashes/counts. Raw PDFs and workbooks use a private Storage bu
 object shape `{auth.uid()}/{session_id}/{document_id}`. Ownership uses `owner_id`; no policy relies
 on mutable user metadata or the deprecated Storage `owner` field.
 
+Authenticated clients receive SELECT plus narrowly scoped RPC execution, not table INSERT/UPDATE.
+RPCs derive the caller from `auth.uid()`, reject anonymous Auth identities, set fixed server clocks,
+never extend absolute expiry, create document rows only as `Checking`, and compute the exact object
+path. Backend-only service-role orchestration is the sole writer for validation outcomes, analysis
+status, provider-sent state, deletion completion and receipts. This is a trust boundary, not merely
+a UI convention.
+
 Deletion is ordered and retryable: mark `DELETING`, capture `provider_sent`, remove every private
 Storage object, remove child/session metadata, then record the bounded receipt. Any failure records
 `partial` and must not make a broader deletion claim. TTL cleanup uses the same orchestration. The
