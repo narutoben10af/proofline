@@ -41,6 +41,10 @@ preview/download and future parser/provider paths receive only the derivative. S
 removes both copies. Catalog JavaScript/Launch/external-navigation actions that are not isolated
 behind a stripped interactive surface remain rejected.
 
+A standalone, disabled-by-default Supabase Google Auth handoff is documented in
+[`docs/supabase-google-auth.md`](docs/supabase-google-auth.md). It does not alter the product shell,
+enable a provider, or add credentials; public previews truthfully report sign-in as not configured.
+
 The same FastAPI process also exposes a tool-only, read-only MCP endpoint at `/mcp`. Its exact
 standard `search` and `fetch` tools cover only the public reviewed Apple and PCG demo corpus;
 they do not expose uploaded document bytes, secrets, private database state, or mutations. See
