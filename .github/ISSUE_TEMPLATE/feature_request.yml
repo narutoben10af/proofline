@@ -1,0 +1,43 @@
+name: Feature request
+description: Propose a focused improvement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or review problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the smallest useful scope and mark assumptions or research gaps.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence and classification implications
+      description: How might this affect provenance, normalization, matching, uncertainty, or human review?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What simpler or safer approaches were considered?
+  - type: textarea
+    id: risks
+    attributes:
+      label: Security and privacy risks
+      description: Note any document handling, external service, retention, or disclosure implications.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: I have separated verified needs from unvalidated claims.
+          required: true
+        - label: I have not included confidential financial data, personal data, or credentials.
+          required: true
