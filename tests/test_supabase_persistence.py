@@ -456,6 +456,8 @@ def test_magic_assistant_migration_is_owner_read_only_and_numeric_free() -> None
     assert "not coalesce(((select auth.jwt()) ->> 'is_anonymous')::boolean, false)" in sql
     assert "grant select on public.magic_assistant_evidence to authenticated" in sql
     assert "grant insert on public.magic_assistant_evidence to authenticated" not in sql
+    assert "revoke all on table public.magic_assistant_evidence from service_role" in sql
+    assert "owned_session.owner_id = magic_assistant_evidence.owner_id" in sql
     assert "create function public.replace_magic_assistant_evidence" in sql
     assert "security definer" in sql
     assert "set search_path = ''" in sql

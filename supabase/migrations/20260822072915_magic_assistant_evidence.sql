@@ -43,6 +43,7 @@ alter table public.magic_assistant_evidence force row level security;
 
 revoke all on table public.magic_assistant_evidence from public, anon, authenticated;
 grant select on public.magic_assistant_evidence to authenticated;
+revoke all on table public.magic_assistant_evidence from service_role;
 grant select on public.magic_assistant_evidence to service_role;
 
 create policy magic_assistant_evidence_select_active_own
@@ -54,7 +55,7 @@ create policy magic_assistant_evidence_select_active_own
       select 1
       from public.analysis_sessions as owned_session
       where owned_session.id = analysis_session_id
-        and owned_session.owner_id = owner_id
+        and owned_session.owner_id = magic_assistant_evidence.owner_id
         and owned_session.state in ('OPEN', 'PROCESSING')
         and now() < owned_session.idle_expires_at
         and now() < owned_session.absolute_expires_at
