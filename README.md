@@ -26,6 +26,11 @@ historical series per reviewed company, and a typed ReportLab PDF renderer are i
 and live hosted-model transport remain intentionally stubbed; see the [API contract
 notes](docs/api-contracts.md) for the stable frontend boundary and limitations.
 
+The temporary Source Library adds strict PDF/XLSX intake under private process-local capabilities,
+30-minute idle/two-hour absolute cleanup, and scoped deletion receipts. It uses no database and is
+single-process/single-worker only. It is not supported for confidential production input; see
+[ADR 0004](docs/architecture/0004-temporary-process-local-source-library.md).
+
 ## Intended demo flow
 
 1. Load one approved financial-report PDF and a related spreadsheet or clearly labeled derived fixture.
@@ -114,10 +119,12 @@ or unsupported forecast assertions.
 - Only the four Tier 0 metrics are accepted. Arithmetic uses Python `Decimal` and typed allowlisted
   plans; no model-generated code or expressions are executed.
 - Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
-- There is no database, document-byte upload, OCR, hosted model call, frontend, or production
-  privacy/compliance claim in this slice. Session endpoints retain and delete process-local intake
-  metadata only; they do not yet run processing adapters. Session deletion cannot remove already
-  downloaded PDF or JSON exports.
+- There is no database, durable retention, OCR, hosted model call, authentication, or production
+  privacy/compliance claim. The v1 session endpoints remain metadata-only; the separate temporary
+  Source Library accepts narrowly validated PDF/XLSX bytes in one running process and does not run
+  processing adapters or send uploaded material to a provider.
+- The deterministic reporting slice does not upload document bytes or run processing adapters.
+  Session deletion cannot remove PDF or JSON exports already downloaded by users.
 - `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
   human-edited dependency declaration.
 
