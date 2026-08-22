@@ -97,6 +97,34 @@ economic/reporting track:
 - `ReportSnapshot` is a reviewed deterministic render input linked to an evidence-chain hash,
   finding IDs, context IDs, and limitations. Its contract explicitly excludes forecasts.
 
+These reserved extension records do not themselves add persistence, macro datasets or forecasting.
+
+## Temporary Source Library (unversioned prototype slice)
+
+The byte-upload boundary is intentionally separate from the metadata-only `/api/v1/sessions`
+contract. `POST /api/sessions` creates an access-private process-local review and sets an
+independent capability in a Secure, HttpOnly, SameSite=Strict cookie. The response returns the
+opaque session ID, current `OPEN` lifecycle status, retention timestamps and a synchronizer CSRF
+token. Mutations require the cookie, an exact allowlisted Origin and `X-Proofline-CSRF`.
+
+`POST /api/sessions/{id}/files` accepts one streamed multipart `report_pdf` and one `workbook`.
+Listing, metadata, authorized content, removal and session deletion are never static file routes.
+See `source-file.schema.json`, `source-session.schema.json`, `source-session-create.schema.json` and
+`source-deletion-receipt.schema.json` for the response contracts. Errors use
+`{"reason_code": "STABLE_CODE"}` without parser traces or raw input.
+
+`DELETE /api/sessions/{id}` is idempotent for the capability holder. It returns a versioned scoped
+receipt and removes source bytes and active session metadata; only the minimal receipt tombstone is
+retained in memory for retry, bounded to two hours and 1,000 entries. Later reads return Gone. This
+design is single-process/single-worker,
+temporary and unsupported for confidential production input. It makes no secure-erasure,
+at-rest-encryption, PDPA, provider-deletion or multi-instance claim. Full rationale and limits are
+in ADR 0004.
+
+`GET /api/public-demo/{fixture_id}` remains keyless and immutable. The endpoint returns cached
+fixture data only when its checked-in SHA-256 matches, with an official-source or project-derived
+label. Upload failure never selects this endpoint automatically.
+
 The dedicated reporting slice implements stricter additive contracts without changing these
 published v1 reserved records. `ResolvedEconomicContextPoint` adds company, display value,
 publication and retrieval dates, relevance, comparability warning, official HTTPS source

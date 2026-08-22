@@ -10,6 +10,10 @@ from proofline.contracts import (
     EvidenceChainSnapshot,
     ExtensionContracts,
     SessionStatus,
+    SourceDeletionReceipt,
+    SourceFileMetadata,
+    SourceSessionCreated,
+    SourceSessionStatus,
 )
 from proofline.metrics import REGISTRY
 from proofline.providers.contracts import (
@@ -39,6 +43,15 @@ def main() -> None:
     write_json(target / "session-create.schema.json", CreateSessionRequest.model_json_schema())
     write_json(target / "session-status.schema.json", SessionStatus.model_json_schema())
     write_json(target / "deletion-receipt.schema.json", DeletionReceipt.model_json_schema())
+    write_json(target / "source-file.schema.json", SourceFileMetadata.model_json_schema())
+    write_json(target / "source-session.schema.json", SourceSessionStatus.model_json_schema())
+    write_json(
+        target / "source-session-create.schema.json", SourceSessionCreated.model_json_schema()
+    )
+    write_json(
+        target / "source-deletion-receipt.schema.json",
+        SourceDeletionReceipt.model_json_schema(),
+    )
     write_json(target / "extension-contracts.schema.json", ExtensionContracts.model_json_schema())
     write_json(target / "assistant-request.schema.json", AssistantRequest.model_json_schema())
     write_json(target / "assistant-result.schema.json", AssistantResult.model_json_schema())

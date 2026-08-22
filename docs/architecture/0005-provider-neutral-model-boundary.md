@@ -1,4 +1,4 @@
-# ADR 0004: Provider-neutral, server-only model boundary
+# ADR 0005: Provider-neutral, server-only model boundary
 
 - Status: accepted for prototype contracts
 - Date: 2026-08-22

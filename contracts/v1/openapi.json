@@ -376,6 +376,25 @@
         "title": "AssistantResult",
         "type": "object"
       },
+      "Body_upload_source_file_api_sessions__session_id__files_post": {
+        "properties": {
+          "file": {
+            "format": "binary",
+            "title": "File",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "file"
+        ],
+        "title": "Body_upload_source_file_api_sessions__session_id__files_post",
+        "type": "object"
+      },
       "CalculationInput": {
         "additionalProperties": false,
         "properties": {
@@ -2510,6 +2529,27 @@
         "title": "ProviderStatus",
         "type": "object"
       },
+      "RemovalCount": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "minimum": 0.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "bytes"
+        ],
+        "title": "RemovalCount",
+        "type": "object"
+      },
       "ReportRenderBundle": {
         "additionalProperties": false,
         "properties": {
@@ -3014,6 +3054,185 @@
         "title": "SessionStatus",
         "type": "object"
       },
+      "SourceDeletionReceipt": {
+        "additionalProperties": false,
+        "properties": {
+          "app_managed_directory_gone": {
+            "title": "App Managed Directory Gone",
+            "type": "boolean"
+          },
+          "claim": {
+            "const": "Deleted from this running container\u2019s application-managed session storage.",
+            "default": "Deleted from this running container\u2019s application-managed session storage.",
+            "title": "Claim",
+            "type": "string"
+          },
+          "completed_at": {
+            "format": "date-time",
+            "title": "Completed At",
+            "type": "string"
+          },
+          "exclusions": {
+            "default": [
+              "immutable fixtures",
+              "user/browser downloads",
+              "infrastructure backups/logs",
+              "third-party retention"
+            ],
+            "items": {
+              "enum": [
+                "immutable fixtures",
+                "user/browser downloads",
+                "infrastructure backups/logs",
+                "third-party retention"
+              ],
+              "type": "string"
+            },
+            "title": "Exclusions",
+            "type": "array"
+          },
+          "receipt_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Receipt Id",
+            "type": "string"
+          },
+          "receipt_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Receipt Version",
+            "type": "string"
+          },
+          "removed": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/RemovalCount"
+            },
+            "propertyNames": {
+              "enum": [
+                "source_files",
+                "derived_artifacts",
+                "session_metadata"
+              ]
+            },
+            "title": "Removed",
+            "type": "object"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "scope_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Scope Version",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "source_material_sent_to_provider": {
+            "title": "Source Material Sent To Provider",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "complete",
+              "partial"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "receipt_id",
+          "session_id",
+          "requested_at",
+          "completed_at",
+          "status",
+          "removed",
+          "app_managed_directory_gone",
+          "source_material_sent_to_provider"
+        ],
+        "title": "SourceDeletionReceipt",
+        "type": "object"
+      },
+      "SourceFileMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "byte_count": {
+            "minimum": 0.0,
+            "title": "Byte Count",
+            "type": "integer"
+          },
+          "canonical_type": {
+            "enum": [
+              "application/pdf",
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ],
+            "title": "Canonical Type",
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "file_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "File Id",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "report_pdf",
+              "workbook"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "uploaded_at": {
+            "format": "date-time",
+            "title": "Uploaded At",
+            "type": "string"
+          },
+          "validation_status": {
+            "enum": [
+              "Uploading",
+              "Checking",
+              "Ready",
+              "Needs attention"
+            ],
+            "title": "Validation Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_id",
+          "display_name",
+          "canonical_type",
+          "byte_count",
+          "uploaded_at",
+          "validation_status",
+          "role",
+          "expires_at"
+        ],
+        "title": "SourceFileMetadata",
+        "type": "object"
+      },
       "SourceMode": {
         "enum": [
           "calculated_live",
@@ -3051,6 +3270,145 @@
           "text"
         ],
         "title": "SourcePage",
+        "type": "object"
+      },
+      "SourceSessionCreated": {
+        "additionalProperties": false,
+        "properties": {
+          "absolute_expires_at": {
+            "format": "date-time",
+            "title": "Absolute Expires At",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "csrf_token": {
+            "maxLength": 128,
+            "minLength": 32,
+            "title": "Csrf Token",
+            "type": "string"
+          },
+          "files": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceFileMetadata"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "idle_expires_at": {
+            "format": "date-time",
+            "title": "Idle Expires At",
+            "type": "string"
+          },
+          "last_activity_at": {
+            "format": "date-time",
+            "title": "Last Activity At",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "OPEN",
+              "PROCESSING",
+              "DELETING",
+              "DELETED"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "state",
+          "created_at",
+          "last_activity_at",
+          "idle_expires_at",
+          "absolute_expires_at",
+          "csrf_token"
+        ],
+        "title": "SourceSessionCreated",
+        "type": "object"
+      },
+      "SourceSessionStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "absolute_expires_at": {
+            "format": "date-time",
+            "title": "Absolute Expires At",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "files": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceFileMetadata"
+            },
+            "title": "Files",
+            "type": "array"
+          },
+          "idle_expires_at": {
+            "format": "date-time",
+            "title": "Idle Expires At",
+            "type": "string"
+          },
+          "last_activity_at": {
+            "format": "date-time",
+            "title": "Last Activity At",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "OPEN",
+              "PROCESSING",
+              "DELETING",
+              "DELETED"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "state",
+          "created_at",
+          "last_activity_at",
+          "idle_expires_at",
+          "absolute_expires_at"
+        ],
+        "title": "SourceSessionStatus",
         "type": "object"
       },
       "SourceSpan": {
@@ -3219,6 +3577,445 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/public-demo/{fixture_id}": {
+      "get": {
+        "operationId": "public_demo_api_public_demo__fixture_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "fixture_id",
+            "required": true,
+            "schema": {
+              "title": "Fixture Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Public Demo Api Public Demo  Fixture Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Public Demo",
+        "tags": [
+          "public-demo"
+        ]
+      }
+    },
+    "/api/sessions": {
+      "post": {
+        "operationId": "create_source_session_api_sessions_post",
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSessionCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Create Source Session",
+        "tags": [
+          "source-library"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}": {
+      "delete": {
+        "operationId": "delete_source_session_api_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDeletionReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Source Session",
+        "tags": [
+          "source-library"
+        ]
+      },
+      "get": {
+        "operationId": "get_source_session_api_sessions__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSessionStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source Session",
+        "tags": [
+          "source-library"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/files": {
+      "get": {
+        "operationId": "list_source_files_api_sessions__session_id__files_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SourceFileMetadata"
+                  },
+                  "title": "Response List Source Files Api Sessions  Session Id  Files Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Source Files",
+        "tags": [
+          "source-library"
+        ]
+      },
+      "post": {
+        "operationId": "upload_source_file_api_sessions__session_id__files_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_source_file_api_sessions__session_id__files_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceFileMetadata"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Source File",
+        "tags": [
+          "source-library"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/files/{file_id}": {
+      "delete": {
+        "operationId": "remove_source_file_api_sessions__session_id__files__file_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceFileMetadata"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Source File",
+        "tags": [
+          "source-library"
+        ]
+      },
+      "get": {
+        "operationId": "get_source_file_metadata_api_sessions__session_id__files__file_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceFileMetadata"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source File Metadata",
+        "tags": [
+          "source-library"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/files/{file_id}/content": {
+      "get": {
+        "operationId": "get_source_file_content_api_sessions__session_id__files__file_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "file_id",
+            "required": true,
+            "schema": {
+              "title": "File Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "disposition",
+            "required": false,
+            "schema": {
+              "default": "attachment",
+              "title": "Disposition",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Source File Content",
+        "tags": [
+          "source-library"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/start": {
+      "post": {
+        "operationId": "start_source_review_api_sessions__session_id__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSessionStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Source Review",
+        "tags": [
+          "source-library"
+        ]
+      }
+    },
     "/api/v1/analyses": {
       "post": {
         "operationId": "create_analysis_api_v1_analyses_post",
