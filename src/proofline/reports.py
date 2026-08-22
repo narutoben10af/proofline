@@ -30,8 +30,10 @@ from proofline.report_contracts import (
     ReportRenderBundle,
     SourceMode,
     canonical_json_bytes,
+    primary_metric_label,
     report_claim_text,
     report_finding_rationale,
+    secondary_metric_label,
 )
 
 _CORE_REPLACEMENTS = {
@@ -82,6 +84,33 @@ def _decimal_display(value) -> str:
 
 def _section(title: str, styles: dict[str, ParagraphStyle]) -> list:
     return [Spacer(1, 4 * mm), _paragraph(title, styles["Section"]), Spacer(1, 1.5 * mm)]
+
+
+def _evidence_table(rows: list[list[object]], widths: tuple, styles) -> Table:
+    rendered = [
+        [
+            _paragraph(cell, styles["TableHeader"] if index == 0 else styles["TableCell"])
+            for cell in row
+        ]
+        for index, row in enumerate(rows)
+    ]
+    table = Table(rendered, colWidths=widths, repeatRows=1, hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F766E")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+                ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    return table
 
 
 def _trend_chart(bundle: ReportRenderBundle, styles: dict[str, ParagraphStyle]) -> list:
@@ -214,6 +243,26 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
     )
     styles.add(
         ParagraphStyle(
+            "TableHeader",
+            parent=styles["BodySmall"],
+            fontName="Helvetica-Bold",
+            fontSize=7.5,
+            leading=9.5,
+            textColor=colors.white,
+            spaceAfter=0,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
+            "TableCell",
+            parent=styles["BodySmall"],
+            fontSize=7.5,
+            leading=9.5,
+            spaceAfter=0,
+        )
+    )
+    styles.add(
+        ParagraphStyle(
             "Hero",
             parent=styles["BodyText"],
             fontName="Helvetica-Bold",
@@ -253,8 +302,10 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
     story.append(_paragraph(bundle.snapshot.title, styles["ReportTitle"]))
     story.append(
         _paragraph(
-            f"{bundle.company} | Reviewed {bundle.snapshot.reviewed_at.date().isoformat()} | "
-            f"Snapshot {bundle.snapshot.snapshot_id}",
+            f"Company: {bundle.company} | Reporting period end: "
+            f"{bundle.report_profile.reporting_period.end.isoformat()} | Reviewer state: "
+            f"{bundle.report_profile.reviewer_state.upper()} | Snapshot "
+            f"{bundle.snapshot.snapshot_id}",
             styles["BodySmall"],
         )
     )
@@ -262,14 +313,16 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
     findings = {finding.id: finding for finding in bundle.analysis.findings}
     claims = {claim.id: claim for claim in bundle.analysis.claims}
     results = {result.id: result for result in bundle.analysis.metric_results}
+    observations = {item.id: item for item in bundle.analysis.observations}
     ordered_findings = [findings[item] for item in bundle.snapshot.finding_ids]
     counts = bundle.snapshot.classification_counts
 
-    story.extend(_section("1. Summary and hero finding", styles))
+    story.extend(_section("1. Executive summary", styles))
     story.append(
         _paragraph(
             f"Reviewed findings: {len(ordered_findings)}. Supported: {counts.supported}; "
-            f"uncertain: {counts.uncertain}; contradicted: {counts.contradicted}.",
+            f"uncertain: {counts.uncertain}; contradicted: {counts.contradicted}. This report "
+            "summarizes reviewed evidence and does not provide an investment recommendation.",
             styles["BodySmall"],
         )
     )
@@ -284,11 +337,77 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
         )
     )
 
-    if bundle.trend is not None:
-        story.extend(_section("2. Historical trend and value table", styles))
-        story.extend(_trend_chart(bundle, styles))
+    primary = [observations[item] for item in bundle.report_profile.primary_observation_ids]
+    story.extend(_section("2. Four primary financial metrics", styles))
+    story.append(
+        _evidence_table(
+            [["Metric", "Value", "Unit", "Period", "Evidence"]]
+            + [
+                [
+                    primary_metric_label(item.concept),
+                    item.display_value,
+                    item.unit,
+                    item.period.end.isoformat(),
+                    item.source_span_id,
+                ]
+                for item in primary
+            ],
+            (35 * mm, 24 * mm, 34 * mm, 30 * mm, 37 * mm),
+            styles,
+        )
+    )
 
-    story.extend(_section("3. Ordered findings", styles))
+    story.extend(_section("3. Secondary ratios", styles))
+    ratio_rows: list[list[object]] = [["Ratio", "Result", "Status", "Input evidence"]]
+    for result_id in bundle.report_profile.secondary_metric_result_ids:
+        result = results[result_id]
+        outcome = (
+            _decimal_display(result.result)
+            if result.result is not None
+            else f"Not calculated: {result.exceptional_state.value}"
+        )
+        ratio_rows.append(
+            [
+                secondary_metric_label(result.metric_id),
+                outcome,
+                "calculated" if result.result is not None else "exception",
+                ", ".join(result.input_observation_ids),
+            ]
+        )
+    story.append(_evidence_table(ratio_rows, (43 * mm, 28 * mm, 28 * mm, 61 * mm), styles))
+
+    if bundle.trend is not None:
+        story.append(
+            KeepTogether(
+                _section("4. Historical trend and value table", styles)
+                + _trend_chart(bundle, styles)
+            )
+        )
+
+    story.extend(_section("5. Exceptions and review risks", styles))
+    exception_results = [item for item in results.values() if item.exceptional_state is not None]
+    review_risks = [
+        item
+        for item in ordered_findings
+        if item.classification.value in {"uncertain", "contradicted"}
+    ]
+    story.append(
+        _paragraph(
+            f"Exceptional metric outcomes: {len(exception_results)}. Findings requiring review: "
+            f"{len(review_risks)}. These are evidence-review flags, not predictions or advice.",
+            styles["BodySmall"],
+        )
+    )
+    for finding in review_risks:
+        story.append(
+            _paragraph(
+                f"{finding.classification.value.upper()}: "
+                f"{report_claim_text(claims[finding.claim_id])}",
+                styles["BodySmall"],
+            )
+        )
+
+    story.extend(_section("6. Narrative-versus-numbers findings", styles))
     for index, finding in enumerate(ordered_findings, start=1):
         claim = claims[finding.claim_id]
         result = results[finding.metric_result_id]
@@ -317,10 +436,17 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
             )
         )
 
-    story.extend(_section("4. Economic context - no causation", styles))
+    story.extend(_section("7. Economic context - no causation", styles))
     story.append(_paragraph(NO_CAUSATION, styles["Hero"]))
     default_points = [point for point in bundle.economic_context if point.default_visible]
     additional_points = [point for point in bundle.economic_context if not point.default_visible]
+    if not bundle.economic_context:
+        story.append(
+            _paragraph(
+                "No reviewed economic context was supplied in the immutable report bundle.",
+                styles["BodySmall"],
+            )
+        )
     for point in default_points:
         story.append(
             _paragraph(
@@ -349,7 +475,7 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
                 )
             )
 
-    story.extend(_section("5. Evidence and provenance appendix", styles))
+    story.extend(_section("8. Evidence and provenance appendix", styles))
     for document in bundle.analysis.documents:
         story.append(
             _paragraph(
@@ -376,18 +502,20 @@ def render_pdf(bundle: ReportRenderBundle) -> bytes:
         )
         story.append(Spacer(1, 1 * mm))
 
-    story.extend(_section("6. Methodology and limitations", styles))
+    story.extend(_section("9. Methodology and limitations", styles))
     story.append(
         _paragraph(
             "This report renders a reviewed, immutable input bundle. It does not fetch source "
-            "data, recalculate metrics, update economic observations, or create forecasts.",
+            "data, recalculate metrics, update economic observations, or create forecasts. The "
+            "forecast section is omitted; no validated forecast method, inputs, history, and "
+            "uncertainty model are present in this contract.",
             styles["BodySmall"],
         )
     )
     for limitation in bundle.snapshot.limitations:
         story.append(_paragraph(f"- {limitation}", styles["BodySmall"]))
 
-    story.extend(_section("7. Data handling and export disclosure", styles))
+    story.extend(_section("10. Data handling and export disclosure", styles))
     story.append(_paragraph(bundle.data_handling_disclosure, styles["BodySmall"]))
 
     doc.build(
