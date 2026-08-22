@@ -122,10 +122,12 @@ or unsupported forecast assertions.
   plans; no model-generated code or expressions are executed.
 - Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
 - There is no database, durable retention, bundled OCR runtime, hosted model call, authentication, or production
-  privacy/compliance claim. The v1 session endpoints remain metadata-only; the separate temporary
-  Source Library accepts narrowly validated PDF/XLSX bytes in one running process and does not run
-  processing adapters or send uploaded material to a provider.
-- The deterministic reporting slice does not upload document bytes or run processing adapters.
+  privacy/compliance claim. The separate temporary Source Library accepts narrowly validated PDF/XLSX
+  bytes in one running process; its explicit `/api/sessions/{session_id}/analysis` boundary runs
+  only the local, reviewed digital-text/XLSX path and never sends uploaded material to a provider.
+- Automatic report-bundle publication, narrative claim extraction beyond the small explicit PDF claim
+  grammar, arbitrary PDF-table reconstruction, and public upload-normalized contract versioning remain
+  future work. Unsupported, scanned, formula-bearing, or ambiguous uploads fail closed for review.
   Session deletion cannot remove PDF or JSON exports already downloaded by users.
 - `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
   human-edited dependency declaration.

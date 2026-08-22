@@ -19,6 +19,11 @@ does not call a model, extract narrative claims, or claim universal document sup
   units; and retains value, label, period, and metadata cell spans with confidence and warnings.
 - Tier-0 calculation-plan generation only when every required concept/period intersection is
   unique. Conflicting metadata and duplicate facts fail closed rather than selecting a value.
+- An authorized source session can call `POST /api/sessions/{session_id}/analysis` to run the
+  local end-to-end path. It builds an `AnalysisResponse` from the uploaded PDF/XLSX pair, preserving
+  document, page, cell, claim, observation, metric, and finding citations. The PDF claim boundary
+  accepts only explicit sentences such as `Revenue grew 15% for 2026`; it is not general claim
+  extraction and does not consult demo fixtures.
 - Synthetic PDF/XLSX tests across unrelated issuers, currencies, and layouts; no issuer document,
   secret, or private content is stored.
 
@@ -41,6 +46,10 @@ confidence)` lines through the existing adapter. Until then, scanned pages retur
   normalizer recognizes only exact allowlisted labels and explicit metadata. Unsupported labels,
   fiscal-year shorthand without a date, multi-currency tables, per-column scales/restatement
   bases, merged-cell headers, and more complex statement structures require a reviewed mapping.
+- Upload-normalized observations currently use the v1 `FactObservation.fixture_status="derived"`
+  compatibility value. A versioned public upload-normalized state and multi-span field on the
+  analysis contract are intentionally deferred until the API contract can be migrated without
+  breaking existing fixture/report consumers.
 - Confidence is an extraction signal, not an accuracy guarantee. OCR output must not become
   authoritative arithmetic or classification.
 - This slice does not provide malware scanning, password recovery, secure erasure, PDPA compliance,
