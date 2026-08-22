@@ -1,0 +1,40 @@
+{
+  "schema_version": "proofline.financial.bank.metric-tests.v1",
+  "cases": [
+    {
+      "case_id": "bank_metrics_accept_group_facts",
+      "entity_type": "bank",
+      "requested_metric_ids": ["net_operating_income_growth_yoy", "pre_tax_return_on_average_assets", "customer_funding_to_assets", "cet1_capital_ratio_reported"],
+      "expected_status": "accepted"
+    },
+    {
+      "case_id": "current_ratio_rejected_for_bank_fixture",
+      "entity_type": "bank",
+      "requested_metric_ids": ["current_ratio"],
+      "expected_status": "not_applicable",
+      "expected_error_code": "INDUSTRIAL_METRIC_NOT_APPLICABLE_TO_BANK"
+    },
+    {
+      "case_id": "fcf_margin_rejected_for_bank_fixture",
+      "entity_type": "bank",
+      "requested_metric_ids": ["fcf_margin"],
+      "expected_status": "not_applicable",
+      "expected_error_code": "INDUSTRIAL_METRIC_NOT_APPLICABLE_TO_BANK"
+    },
+    {
+      "case_id": "issuer_ldr_definition_mismatch_detected",
+      "entity_type": "bank",
+      "requested_metric_ids": ["net_loans_to_customer_funding_proxy", "issuer_loan_to_deposit_ratio"],
+      "expected_status": "definition_mismatch",
+      "expected_error_code": "GROSS_VS_NET_LOANS_DEFINITION_MISMATCH"
+    },
+    {
+      "case_id": "group_and_bank_scope_mixing_rejected",
+      "entity_type": "bank",
+      "input_scopes": ["group_consolidated", "bank_standalone"],
+      "requested_metric_ids": ["pre_tax_return_on_average_assets"],
+      "expected_status": "incompatible_inputs",
+      "expected_error_code": "ENTITY_SCOPE_MISMATCH"
+    }
+  ]
+}

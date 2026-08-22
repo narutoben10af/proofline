@@ -1,0 +1,28 @@
+{
+  "schema_version": "proofline.financial.bank.claims.v1",
+  "claims": [
+    {
+      "claim_id": "maybank_total_assets_decline_claim",
+      "claim_text": "The Group's total assets stood at RM1,053.6 billion at 31 December 2025, a decrease of RM21.7 billion or 2.0% YoY.",
+      "issuer": "Malayan Banking Berhad",
+      "period": "FY2025",
+      "entity_scope": "group_consolidated",
+      "source_id": "maybank_fy2025_financial_statements",
+      "source_url": "https://maybank.listedcompany.com/newsroom/Maybank_FY2025_Financial_Statements_20260401.pdf",
+      "pdf_page": 14,
+      "printed_page": 12,
+      "table_anchor": "Analysis of Financial Statements > Review of FY2025 Financial Position > Total Assets",
+      "row_anchor": "first narrative paragraph",
+      "input_fact_ids": ["maybank_total_assets_2025", "maybank_total_assets_2024"],
+      "normalized_claims": {
+        "total_assets_2025_rm_billion": "1053.6",
+        "absolute_decrease_rm_billion": "21.7",
+        "decrease_percent": "2.0"
+      },
+      "classification": "supported",
+      "rounding_policy": "Each claim number is compared after decimal round-half-even to one decimal place in RM billion or percent.",
+      "evidence_label": "claim_source_reported_and_fact_checked",
+      "causal_scope": "No causal clause is evaluated or inferred."
+    }
+  ]
+}

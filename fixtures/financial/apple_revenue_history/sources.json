@@ -1,0 +1,72 @@
+{
+  "schema_version": "proofline.financial.history.sources.v1",
+  "retrieved_at": "2026-08-22",
+  "retrieval_policy": {
+    "authority": "Primary issuer filings hosted by the U.S. Securities and Exchange Commission",
+    "reproducible_route": "Open the filing index by accession number, then open document sequence 1 (Form 10-K).",
+    "redistribution": "Only project-authored transcriptions and derived outputs are committed. No issuer PDF, workbook, or filing copy is redistributed.",
+    "automation_note": "Automated retrieval must identify the client and follow the SEC fair-access policy. The offline verifier does not make network requests."
+  },
+  "sources": [
+    {
+      "source_id": "apple_2016_10k",
+      "issuer": "Apple Inc.",
+      "cik": "0000320193",
+      "document_type": "Form 10-K",
+      "accession_number": "0001628280-16-020309",
+      "filing_date": "2016-10-26",
+      "period_of_report": "2016-09-24",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000162828016020309/0001628280-16-020309-index.html",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/320193/000162828016020309/a201610-k9242016.htm",
+      "value_anchor": "Item 8 > Consolidated Statements of Operations > printed page 39 > Net sales row > FY2016, FY2015, and FY2014 columns",
+      "period_policy_anchor": "Note 1 > Basis of Presentation and Preparation > printed page 44: FY2016, FY2015, and FY2014 period ends and 52-week duration",
+      "restatement_anchor": "Note 1 > Basis of Presentation and Preparation > printed page 44: certain prior-period amounts were reclassified to conform to current presentation",
+      "covered_fiscal_years": ["FY2014", "FY2015", "FY2016"]
+    },
+    {
+      "source_id": "apple_2019_10k",
+      "issuer": "Apple Inc.",
+      "cik": "0000320193",
+      "document_type": "Form 10-K",
+      "accession_number": "0000320193-19-000119",
+      "filing_date": "2019-10-31",
+      "period_of_report": "2019-09-28",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019319000119/0000320193-19-000119-index.htm",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019319000119/a10-k20199282019.htm",
+      "value_anchor": "Item 8 > Consolidated Statements of Operations > printed page 29 > Total net sales row > FY2019, FY2018, and FY2017 columns",
+      "period_policy_anchor": "Note 1 > Basis of Presentation and Preparation > printed page 34: FY2019 and FY2018 were 52 weeks; FY2017 was 53 weeks",
+      "restatement_anchor": "Note 1 > Revenue Recognition > printed page 34: Topic 606 adopted full retrospectively; Apple did not restate prior total net sales because the impact was not material; FY2018 and FY2017 Products/Services classifications were reclassified",
+      "covered_fiscal_years": ["FY2017", "FY2018", "FY2019"]
+    },
+    {
+      "source_id": "apple_2022_10k",
+      "issuer": "Apple Inc.",
+      "cik": "0000320193",
+      "document_type": "Form 10-K",
+      "accession_number": "0000320193-22-000108",
+      "filing_date": "2022-10-28",
+      "period_of_report": "2022-09-24",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019322000108/0000320193-22-000108-index.htm",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019322000108/aapl-20220924.htm",
+      "value_anchor": "Item 8 > Consolidated Statements of Operations > printed page 29 > Total net sales row > FY2022, FY2021, and FY2020 columns",
+      "period_policy_anchor": "Note 1 > Basis of Presentation and Preparation > printed page 34: FY2022, FY2021, and FY2020 each spanned 52 weeks",
+      "restatement_anchor": "Note 1 > Basis of Presentation and Preparation > printed page 34: certain prior-period amounts were reclassified to conform to current presentation",
+      "covered_fiscal_years": ["FY2020", "FY2021", "FY2022"]
+    },
+    {
+      "source_id": "apple_2025_10k",
+      "issuer": "Apple Inc.",
+      "cik": "0000320193",
+      "document_type": "Form 10-K",
+      "accession_number": "0000320193-25-000079",
+      "filing_date": "2025-10-31",
+      "period_of_report": "2025-09-27",
+      "filing_index_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/0000320193-25-000079-index.htm",
+      "source_url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/aapl-20250927.htm",
+      "value_anchor": "Item 8 > Consolidated Statements of Operations > printed page 29 > Total net sales row > FY2025, FY2024, and FY2023 columns",
+      "period_policy_anchor": "Note 1 > Basis of Presentation and Preparation > printed page 34: FY2025 and FY2024 were 52 weeks; FY2023 was 53 weeks",
+      "restatement_anchor": "Note 1 > printed page 34: prior-period note amounts may be reclassified; ASU 2023-07 segment disclosures were adopted retrospectively",
+      "covered_fiscal_years": ["FY2023", "FY2024", "FY2025"]
+    }
+  ]
+}

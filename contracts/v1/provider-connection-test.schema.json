@@ -1,0 +1,30 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "disclosure": {
+      "title": "Disclosure",
+      "type": "string"
+    },
+    "reachable": {
+      "title": "Reachable",
+      "type": "boolean"
+    },
+    "state": {
+      "enum": [
+        "not_configured",
+        "ready",
+        "offline",
+        "error"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reachable",
+    "state",
+    "disclosure"
+  ],
+  "title": "ProviderConnectionTest",
+  "type": "object"
+}

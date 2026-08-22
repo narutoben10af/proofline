@@ -10,8 +10,24 @@ from proofline.contracts import (
     EvidenceChainSnapshot,
     ExtensionContracts,
     SessionStatus,
+    SourceDeletionReceipt,
+    SourceFileMetadata,
+    SourceSessionCreated,
+    SourceSessionStatus,
 )
 from proofline.metrics import REGISTRY
+from proofline.providers.contracts import (
+    AssistantRequest,
+    AssistantResult,
+    ChartRequest,
+    ChartResult,
+    ChartSpec,
+    ClaimExtractionRequest,
+    ClaimExtractionResult,
+    ProviderConnectionTest,
+    ProviderStatus,
+)
+from proofline.report_contracts import CompanyLens, ReportRenderBundle
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -27,7 +43,33 @@ def main() -> None:
     write_json(target / "session-create.schema.json", CreateSessionRequest.model_json_schema())
     write_json(target / "session-status.schema.json", SessionStatus.model_json_schema())
     write_json(target / "deletion-receipt.schema.json", DeletionReceipt.model_json_schema())
+    write_json(target / "source-file.schema.json", SourceFileMetadata.model_json_schema())
+    write_json(target / "source-session.schema.json", SourceSessionStatus.model_json_schema())
+    write_json(
+        target / "source-session-create.schema.json", SourceSessionCreated.model_json_schema()
+    )
+    write_json(
+        target / "source-deletion-receipt.schema.json",
+        SourceDeletionReceipt.model_json_schema(),
+    )
     write_json(target / "extension-contracts.schema.json", ExtensionContracts.model_json_schema())
+    write_json(target / "assistant-request.schema.json", AssistantRequest.model_json_schema())
+    write_json(target / "assistant-result.schema.json", AssistantResult.model_json_schema())
+    write_json(
+        target / "claim-extraction-request.schema.json", ClaimExtractionRequest.model_json_schema()
+    )
+    write_json(
+        target / "claim-extraction-result.schema.json", ClaimExtractionResult.model_json_schema()
+    )
+    write_json(target / "provider-status.schema.json", ProviderStatus.model_json_schema())
+    write_json(
+        target / "provider-connection-test.schema.json", ProviderConnectionTest.model_json_schema()
+    )
+    write_json(target / "chart-request.schema.json", ChartRequest.model_json_schema())
+    write_json(target / "chart-result.schema.json", ChartResult.model_json_schema())
+    write_json(target / "chart-spec.schema.json", ChartSpec.model_json_schema())
+    write_json(target / "company-lens.schema.json", CompanyLens.model_json_schema())
+    write_json(target / "report-render-bundle.schema.json", ReportRenderBundle.model_json_schema())
     write_json(
         target / "metric-registry.json",
         {

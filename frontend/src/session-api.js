@@ -1,4 +1,6 @@
 const SAFE_ERRORS = {
+  ARCHIVE_ENTRY_LIMIT: "The workbook contains too many internal files.",
+  ARCHIVE_PATH_SUSPICIOUS: "The workbook contains an unsafe internal path.",
   CSRF_TOKEN_INVALID: "This review could not be verified. Refresh and try again.",
   DECLARED_MIME_MISMATCH: "The selected file type does not match its contents.",
   EXTERNAL_LINKS_NOT_ALLOWED: "Workbooks with external links are not accepted.",
@@ -25,15 +27,53 @@ async function request(path, options = {}) {
   return body;
 }
 
-export function createSourceSession() { return request("/api/sessions", { method: "POST" }); }
-export function listSourceFiles(session) { return request(`/api/sessions/${encodeURIComponent(session.session_id)}/files`); }
-export function uploadSource(session, role, file) {
-  const body = new FormData();
-  body.append("role", role);
-  body.append("file", file);
-  return request(`/api/sessions/${encodeURIComponent(session.session_id)}/files`, { method: "POST", headers: { "X-Proofline-CSRF": session.csrf_token }, body });
+export function createSourceSession() {
+  return request("/api/sessions", { method: "POST" });
+}
+
+export function getSourceSession(session) {
+  return request(`/api/sessions/${encodeURIComponent(session.session_id)}`);
+}
+
+export function listSourceFiles(session) {
+  return request(`/api/sessions/${encodeURIComponent(session.session_id)}/files`);
 }
 export function sourceContentUrl(session, fileId, disposition = "attachment") {
   if (!["attachment", "inline"].includes(disposition)) throw new Error("Invalid disposition.");
   return `/api/sessions/${encodeURIComponent(session.session_id)}/files/${encodeURIComponent(fileId)}/content?disposition=${disposition}`;
+}
+export function uploadSource(session, role, file) {
+  const body = new FormData();
+  body.append("role", role);
+  body.append("file", file);
+  return request(`/api/sessions/${session.session_id}/files`, {
+    method: "POST",
+    headers: { "X-Proofline-CSRF": session.csrf_token },
+    body,
+  });
+}
+
+export function removeSource(session, fileId) {
+  return request(`/api/sessions/${session.session_id}/files/${fileId}`, {
+    method: "DELETE",
+    headers: { "X-Proofline-CSRF": session.csrf_token },
+  });
+}
+
+export function startSourceReview(session) {
+  return request(`/api/sessions/${session.session_id}/start`, {
+    method: "POST",
+    headers: { "X-Proofline-CSRF": session.csrf_token },
+  });
+}
+
+export function deleteSourceSession(session) {
+  return request(`/api/sessions/${session.session_id}`, {
+    method: "DELETE",
+    headers: { "X-Proofline-CSRF": session.csrf_token },
+  });
+}
+
+export function loadPublicDemo(fixtureId) {
+  return request(`/api/public-demo/${fixtureId}`);
 }

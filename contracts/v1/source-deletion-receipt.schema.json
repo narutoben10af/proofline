@@ -1,0 +1,131 @@
+{
+  "$defs": {
+    "RemovalCount": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "minimum": 0,
+          "title": "Bytes",
+          "type": "integer"
+        },
+        "count": {
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count",
+        "bytes"
+      ],
+      "title": "RemovalCount",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "app_managed_directory_gone": {
+      "title": "App Managed Directory Gone",
+      "type": "boolean"
+    },
+    "claim": {
+      "const": "Deleted from this running container\u2019s application-managed session storage.",
+      "default": "Deleted from this running container\u2019s application-managed session storage.",
+      "title": "Claim",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "exclusions": {
+      "default": [
+        "immutable fixtures",
+        "user/browser downloads",
+        "infrastructure backups/logs",
+        "third-party retention"
+      ],
+      "items": {
+        "enum": [
+          "immutable fixtures",
+          "user/browser downloads",
+          "infrastructure backups/logs",
+          "third-party retention"
+        ],
+        "type": "string"
+      },
+      "title": "Exclusions",
+      "type": "array"
+    },
+    "receipt_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Receipt Id",
+      "type": "string"
+    },
+    "receipt_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Receipt Version",
+      "type": "string"
+    },
+    "removed": {
+      "additionalProperties": {
+        "$ref": "#/$defs/RemovalCount"
+      },
+      "propertyNames": {
+        "enum": [
+          "source_files",
+          "derived_artifacts",
+          "session_metadata"
+        ]
+      },
+      "title": "Removed",
+      "type": "object"
+    },
+    "requested_at": {
+      "format": "date-time",
+      "title": "Requested At",
+      "type": "string"
+    },
+    "scope_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Scope Version",
+      "type": "string"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "source_material_sent_to_provider": {
+      "title": "Source Material Sent To Provider",
+      "type": "boolean"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "partial"
+      ],
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "receipt_id",
+    "session_id",
+    "requested_at",
+    "completed_at",
+    "status",
+    "removed",
+    "app_managed_directory_gone",
+    "source_material_sent_to_provider"
+  ],
+  "title": "SourceDeletionReceipt",
+  "type": "object"
+}

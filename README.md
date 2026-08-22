@@ -19,10 +19,25 @@ The product is designed around the DevLeague Lab 1 brief: combine financial PDFs
 
 ## Status
 
-The repository now includes a minimal contract-first FastAPI backend. Versioned JSON contracts,
-four deterministic Tier 0 metrics, conservative classification, and fixture-driven tests are
-implemented. Parsing and live hosted-model transport remain intentionally stubbed; see the
-[API contract notes](docs/api-contracts.md) for the stable frontend boundary and limitations.
+The repository now includes a minimal contract-first FastAPI backend plus the isolated Company
+Lens and deterministic reporting slice. Versioned JSON contracts, four deterministic Tier 0
+metrics, conservative classification, official-source FY2025 economic context fixtures, one
+historical series per reviewed company, and a typed ReportLab PDF renderer are implemented. Parsing
+adapters remain intentionally stubbed. The optional server-side Gemma 4 transport is implemented
+behind bounded, cited, provider-neutral contracts and stays disabled without a server credential;
+see the [API contract notes](docs/api-contracts.md) for the stable frontend boundary and
+limitations.
+
+The temporary Source Library adds strict PDF/XLSX intake under private process-local capabilities,
+30-minute idle/two-hour absolute cleanup, and scoped deletion receipts. It uses no database and is
+single-process/single-worker only. It is not supported for confidential production input; see
+[ADR 0004](docs/architecture/0004-temporary-process-local-source-library.md).
+
+The same FastAPI process also exposes a tool-only, read-only MCP endpoint at `/mcp`. Its exact
+standard `search` and `fetch` tools cover only the public reviewed Apple and PCG demo corpus;
+they do not expose uploaded document bytes, secrets, private database state, or mutations. See
+[the MCP server guide](docs/mcp.md) for the contract, local verification, generic MCP setup, and
+ChatGPT Developer Mode steps.
 
 ## Intended demo flow
 
@@ -69,6 +84,7 @@ Only public hackathon fixtures may be sent to hosted Gemma 4. According to the c
 - [`docs/decisions/`](docs/decisions/) — retained legacy ADR template from the repository bootstrap
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution and pull-request workflow
 - [`SECURITY.md`](SECURITY.md) — security policy and private reporting guidance
+- [`docs/privacy/`](docs/privacy/) — Malaysian PDPA readiness analysis, non-publishable data-handling draft, data-flow register, incident runbook, and review gate (not legal advice or a compliance claim)
 
 ## Getting started
 
@@ -89,9 +105,21 @@ Open `http://127.0.0.1:8000/docs`, check `GET /health`, or submit the request po
 PYTHONPATH=src .venv/bin/python scripts/export_contracts.py
 ```
 
-`GEMINI_API_KEY` is optional and tests never require a live model. The v1 provider defaults to
-configured Gemma 4 but intentionally stops before network transport; it is a narrow interface for a
-later reviewed adapter.
+`GEMINI_API_KEY` is optional and tests never require a live key or network call. When configured,
+the v1 provider calls only the fixed allowlisted Gemini Developer API endpoints for the two
+supported Gemma 4 model identifiers. It returns locally schema-validated, cited results and typed
+offline/error states; see [the provider boundary](docs/model-provider.md).
+
+The compact fixture-backed lenses are available at `GET /api/v1/company-lenses/apple-fy2025` and
+`GET /api/v1/company-lenses/pcg-fy2025`. `POST /api/v1/reports/pdf` accepts the complete immutable
+`ReportRenderBundle`; it returns an attachment with `ETag`, `X-Content-SHA256`, and `no-store`.
+Use `?output=evidence-json` on the same endpoint for the reviewed canonical JSON fallback. Rendering
+never fetches a source, refreshes economic data, recalculates a metric, or creates a forecast.
+Apple and PCG are demo fixtures, not a report issuer allowlist: uploaded issuers use a deterministic
+company ID and the same typed renderer. The bundle selects four sourced primary observations and
+four secondary ratios, enforces one issuer/currency/period boundary, and can explicitly render the
+absence of reviewed economic context. It does not render shareholder, ownership, recommendation,
+or unsupported forecast assertions.
 
 ### Current limitations
 
@@ -100,9 +128,15 @@ later reviewed adapter.
 - Only the four Tier 0 metrics are accepted. Arithmetic uses Python `Decimal` and typed allowlisted
   plans; no model-generated code or expressions are executed.
 - Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
-- There is no database, document-byte upload, OCR, hosted model call, frontend, or production
-  privacy/compliance claim in this slice. Session endpoints retain and delete process-local intake
-  metadata only; they do not yet run processing adapters.
+- There is no database, durable retention, OCR, authentication, or production
+  privacy/compliance claim. The v1 session endpoints remain metadata-only; the separate temporary
+  Source Library accepts narrowly validated PDF/XLSX bytes in one running process and does not run
+  processing adapters or automatically send uploaded material to a provider. The optional hosted
+  model accepts only explicitly selected, bounded public-fixture evidence and is disabled by
+  default.
+- The deterministic reporting slice does not upload document bytes or run processing adapters.
+  Session deletion cannot remove provider-held data or PDF/JSON exports already downloaded by
+  users.
 - `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
   human-edited dependency declaration.
 

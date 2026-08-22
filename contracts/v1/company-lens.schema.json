@@ -1,0 +1,354 @@
+{
+  "$defs": {
+    "FinancialTrendPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_source_span_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Source Span Id"
+        },
+        "historical": {
+          "const": true,
+          "default": true,
+          "title": "Historical",
+          "type": "boolean"
+        },
+        "official_source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Official Source Url"
+        },
+        "period": {
+          "$ref": "#/$defs/Period"
+        },
+        "reporting_basis": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Reporting Basis",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "period",
+        "value",
+        "reporting_basis"
+      ],
+      "title": "FinancialTrendPoint",
+      "type": "object"
+    },
+    "FinancialTrendSeries": {
+      "additionalProperties": false,
+      "properties": {
+        "company": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Company",
+          "type": "string"
+        },
+        "currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "includes_forecast": {
+          "const": false,
+          "default": false,
+          "title": "Includes Forecast",
+          "type": "boolean"
+        },
+        "indicator": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Indicator",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/FinancialTrendPoint"
+          },
+          "maxItems": 20,
+          "minItems": 3,
+          "title": "Points",
+          "type": "array"
+        },
+        "unit": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "company",
+        "indicator",
+        "unit",
+        "points"
+      ],
+      "title": "FinancialTrendSeries",
+      "type": "object"
+    },
+    "Period": {
+      "additionalProperties": false,
+      "properties": {
+        "duration_weeks": {
+          "anyOf": [
+            {
+              "maximum": 54,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Weeks"
+        },
+        "end": {
+          "format": "date",
+          "title": "End",
+          "type": "string"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start"
+        }
+      },
+      "required": [
+        "end"
+      ],
+      "title": "Period",
+      "type": "object"
+    },
+    "ResolvedEconomicContextPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "caveat": {
+          "const": "Context only; no causal relationship is asserted.",
+          "default": "Context only; no causal relationship is asserted.",
+          "title": "Caveat",
+          "type": "string"
+        },
+        "company": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Company",
+          "type": "string"
+        },
+        "comparability_warning": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Comparability Warning",
+          "type": "string"
+        },
+        "default_visible": {
+          "default": true,
+          "title": "Default Visible",
+          "type": "boolean"
+        },
+        "display_value": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Display Value",
+          "type": "string"
+        },
+        "geography": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Geography",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "indicator": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Indicator",
+          "type": "string"
+        },
+        "official_source_confirmed": {
+          "const": true,
+          "default": true,
+          "title": "Official Source Confirmed",
+          "type": "boolean"
+        },
+        "official_source_url": {
+          "title": "Official Source Url",
+          "type": "string"
+        },
+        "period": {
+          "$ref": "#/$defs/Period"
+        },
+        "published_on": {
+          "format": "date",
+          "title": "Published On",
+          "type": "string"
+        },
+        "relevance": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Relevance",
+          "type": "string"
+        },
+        "retrieved_on": {
+          "format": "date",
+          "title": "Retrieved On",
+          "type": "string"
+        },
+        "unit": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "id",
+        "company",
+        "indicator",
+        "geography",
+        "period",
+        "value",
+        "display_value",
+        "unit",
+        "official_source_url",
+        "published_on",
+        "retrieved_on",
+        "relevance",
+        "comparability_warning"
+      ],
+      "title": "ResolvedEconomicContextPoint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "additional_context": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/ResolvedEconomicContextPoint"
+      },
+      "maxItems": 4,
+      "title": "Additional Context",
+      "type": "array"
+    },
+    "company": {
+      "title": "Company",
+      "type": "string"
+    },
+    "company_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9._:-]+$",
+      "title": "Company Id",
+      "type": "string"
+    },
+    "context_caveat": {
+      "const": "Context only; no causal relationship is asserted.",
+      "default": "Context only; no causal relationship is asserted.",
+      "title": "Context Caveat",
+      "type": "string"
+    },
+    "economic_context": {
+      "items": {
+        "$ref": "#/$defs/ResolvedEconomicContextPoint"
+      },
+      "maxItems": 4,
+      "minItems": 1,
+      "title": "Economic Context",
+      "type": "array"
+    },
+    "reviewed_period": {
+      "title": "Reviewed Period",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "trend": {
+      "$ref": "#/$defs/FinancialTrendSeries"
+    }
+  },
+  "required": [
+    "company_id",
+    "company",
+    "reviewed_period",
+    "trend",
+    "economic_context"
+  ],
+  "title": "CompanyLens",
+  "type": "object"
+}
