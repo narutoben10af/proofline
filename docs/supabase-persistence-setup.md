@@ -1,11 +1,12 @@
-# Supabase persistence setup — reviewed, not applied
+# Supabase persistence setup — implementation ready, deployment not claimed
 
 ## Current truth
 
-The MagicFin Supabase project `qvxohnlboefomtjecxdh` exists in `ap-southeast-1`, but this repository
-has not linked the CLI, applied the migration, configured Auth, requested credentials, or deployed
-an Edge Function. `SOURCE_LIBRARY_PERSISTENCE_BACKEND=process-local` remains the default. Sign-in
-must continue to report **Not configured** until the activation checklist is complete.
+The repository contains the authenticated API, two ordered migrations, private-Storage adapter,
+Google Auth handoff, and normalized evidence persistence. This checkout has not proved that the
+target project has those migrations, Auth settings, secrets, API deployment, or Edge Function.
+`SOURCE_LIBRARY_PERSISTENCE_BACKEND=process-local` remains the local default. A deployment must
+continue to report **Not configured** until the activation checklist is complete.
 
 No statement here is a production-security, confidential-data, secure-erasure or compliance claim.
 
@@ -18,10 +19,9 @@ No statement here is a production-security, confidential-data, secure-erasure or
   Storage SELECT, INSERT, UPDATE and DELETE. The object path is exactly
   `{auth.uid()}/{session_id}/{document_id}`.
 - Public-schema Data API grants are explicit and separate from RLS. `anon` has no access.
-- `src/proofline/supabase_persistence.py` supplies user-JWT PostgREST and private-Storage adapters.
-  The API selects its existing `SessionRepository` through this boundary. It returns the
-  process-local repository by default and fails closed if Supabase is selected before Auth can
-  provide an owner and UUID session mapping; it never auto-activates remote persistence.
+- `src/proofline/supabase_persistence.py` supplies user-JWT PostgREST, private-Storage, Auth
+  verification, and backend-only persistence adapters. `/api/authenticated/sessions` activates only
+  with complete Supabase server configuration; the separate cookie-capability route stays local.
 - Authenticated tables are read-only. Narrow `SECURITY DEFINER` RPCs (empty `search_path`, explicit
   schema qualification, explicit EXECUTE grants) derive owner, clocks, fixed expiry, initial
   `Checking` state and canonical object paths. Only backend service-role orchestration may author
@@ -29,12 +29,10 @@ No statement here is a production-security, confidential-data, secure-erasure or
 - `supabase/tests/source_library_rls.sql` proves that user A cannot read or delete user B's session,
   document or Storage object in a disposable local database.
 
-Postgres stores locators, hashes, counts, statuses and lifecycle timestamps—not raw document text,
-cell values, prompts or source bytes.
-
-The merged dynamic upload route remains the only normalization path. A later authenticated route
-may persist metadata derived from its completed `AnalysisResponse`; the adapter must not normalize
-or re-parse evidence independently.
+Postgres stores locators, hashes, counts, statuses, cited response JSON, and normalized financial
+facts for the owner-scoped assistant boundary. Raw source bytes remain only in private Storage.
+The authenticated route calls the same dynamic normalization path and persists that completed
+`AnalysisResponse`; the adapter does not independently invent or recalculate evidence.
 
 ## Local review path
 

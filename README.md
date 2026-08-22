@@ -41,11 +41,14 @@ preview/download and future parser/provider paths receive only the derivative. S
 removes both copies. Catalog JavaScript/Launch/external-navigation actions that are not isolated
 behind a stripped interactive surface remain rejected.
 
-A disabled Supabase persistence seam and unapplied owner-RLS migration are available for review.
-They do not change the process-local default or claim production readiness; see the
-[guarded setup path](docs/supabase-persistence-setup.md).
+An authenticated Supabase upload path now verifies user JWTs through Supabase Auth, uses
+owner-derived session/document RPCs and private Storage, revalidates stored bytes, persists cited
+normalized evidence plus the returned analysis snapshot, and never places a secret/service-role key
+in the browser. It activates only with complete server configuration and applied migrations; the
+process-local route remains the local default. See the [live pipeline and release gate](docs/live-upload-pipeline.md)
+and [guarded setup path](docs/supabase-persistence-setup.md).
 
-A standalone, disabled-by-default Supabase Google Auth handoff is documented in
+A configuration-gated Supabase Google Auth handoff is documented in
 [`docs/supabase-google-auth.md`](docs/supabase-google-auth.md). It does not alter the product shell,
 enable a provider, or add credentials; public previews truthfully report sign-in as not configured.
 
