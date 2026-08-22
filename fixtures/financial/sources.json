@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0.0",
+  "retrieved_at": "2026-08-22",
+  "sources": [
+    {
+      "source_id": "APPLE-FILING-HUB-2025",
+      "issuer": "Apple Inc.",
+      "type": "official_filing_hub",
+      "url": "https://investor.apple.com/sec-filings/sec-filings-details/default.aspx?FilingId=18880179",
+      "owner": "Apple Inc.",
+      "period": "FY2025",
+      "retrieval": "Open the official filing hub and choose PDF or Excel Format Download. The Excel link is an official structured source but its opaque CDN URL is not required by this fixture.",
+      "redistribution": "URL and minimal attributed facts only; issuer binaries are not committed.",
+      "notes": "Hub identifies the Form 10-K dated 31 October 2025 and exposes HTML, PDF, Excel, and XBRL downloads."
+    },
+    {
+      "source_id": "APPLE-10K-2025",
+      "issuer": "Apple Inc.",
+      "type": "official_form_10k_pdf",
+      "url": "https://d18rn0p25nwr6d.cloudfront.net/CIK-0000320193/c24e7a28-5254-4dfa-9447-62aaa3c24bb1.pdf",
+      "owner": "Apple Inc.",
+      "period": "52 weeks ended 2025-09-27",
+      "filed_at": "2025-10-31",
+      "retrieval": "Direct issuer-hosted PDF linked from APPLE-FILING-HUB-2025.",
+      "redistribution": "Not committed; retrieve at setup time.",
+      "anchors": [
+        "PDF 31 / printed 29: Consolidated Statements of Operations",
+        "PDF 33 / printed 30: Consolidated Balance Sheets",
+        "PDF 35 / printed 32: Consolidated Statements of Cash Flows",
+        "PDF 23 / printed 21: Fiscal Period caveat",
+        "PDF 36 / printed 33: Basis of Presentation and Preparation"
+      ]
+    },
+    {
+      "source_id": "APPLE-SEC-ACCESSION-2025",
+      "issuer": "Apple Inc.",
+      "type": "official_sec_accession_directory",
+      "url": "https://www.sec.gov/Archives/edgar/data/320193/000032019325000079/",
+      "owner": "U.S. Securities and Exchange Commission",
+      "period": "FY2025",
+      "retrieval": "Use a descriptive User-Agent and respect SEC fair-access guidance. The directory contains the inline XBRL filing and XBRL ZIP.",
+      "redistribution": "No SEC payload is committed by this pack."
+    },
+    {
+      "source_id": "SEC-EDGAR-API-GUIDANCE",
+      "issuer": null,
+      "type": "official_retrieval_guidance",
+      "url": "https://www.sec.gov/search-filings/edgar-application-programming-interfaces",
+      "owner": "U.S. Securities and Exchange Commission",
+      "period": null,
+      "retrieval": "Follow current SEC API and fair-access guidance.",
+      "redistribution": "Link only."
+    },
+    {
+      "source_id": "PCG-FR-2025",
+      "issuer": "PETRONAS Chemicals Group Berhad",
+      "type": "official_audited_financial_report_pdf",
+      "url": "https://www.petronas.com/pcg/sites/default/files/uploads/content/2026/IR%20Suite%202025/PCG%20FR2025%20%5BInteractive%20PDF%5D.pdf",
+      "owner": "PETRONAS Chemicals Group Berhad",
+      "period": "Year ended 2025-12-31",
+      "approved_at": "2026-02-23",
+      "retrieval": "Direct PDF linked from PCG-REPORTS-HUB.",
+      "redistribution": "Not committed; retrieve at setup time. Only minimal attributed facts are included in normalized_facts.csv.",
+      "anchors": [
+        "PDF 6 / printed 10: Statements of Financial Position",
+        "PDF 6 / printed 11: Statements of Profit or Loss",
+        "PDF 10 / printed 18-19: Statements of Cash Flows",
+        "PDF 25 / printed 49: Note 3 PPE cash-purchase reconciliation",
+        "PDF 11 / printed 21: presentation currency and rounding"
+      ]
+    },
+    {
+      "source_id": "PCG-REPORTS-HUB",
+      "issuer": "PETRONAS Chemicals Group Berhad",
+      "type": "official_reports_hub",
+      "url": "https://www.petronas.com/pcg/investor-relations/reports",
+      "owner": "PETRONAS Chemicals Group Berhad",
+      "period": "FY2025",
+      "retrieval": "Filter or locate Financial Report 2025, published 19 March 2026.",
+      "redistribution": "Link only."
+    },
+    {
+      "source_id": "PCG-FY2025-RELEASE",
+      "issuer": "PETRONAS Chemicals Group Berhad",
+      "type": "official_media_release_html",
+      "url": "https://www.petronas.com/pcg/media/media-releases/fy2025-results-reflect-challenging-market-pcg-prioritises-operational-and",
+      "owner": "PETRONAS Chemicals Group Berhad",
+      "period": "FY2025",
+      "published_at": "2026-02-23",
+      "retrieval": "Public issuer HTML page.",
+      "redistribution": "Only a short attributed claim and URL are represented in hero_cases.json.",
+      "anchors": [
+        "Headline highlights: Revenue of RM27.5 billion",
+        "Opening FY2025 results paragraph: Revenue for FY2025 stood at RM27.5 billion"
+      ]
+    }
+  ]
+}
