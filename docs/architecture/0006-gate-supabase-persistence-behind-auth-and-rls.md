@@ -1,0 +1,55 @@
+# ADR 0006: Gate Supabase persistence behind reviewed Auth and RLS
+
+- Status: Proposed; code and migration are not deployed
+- Date: 2026-08-22
+
+## Context
+
+The temporary Source Library is deliberately process-local and cannot provide durable ownership,
+multi-instance coordination or authenticated private Storage. A MagicFin Supabase project now
+exists, but the application has not completed Auth integration, migration review, or cross-user
+policy verification against that project.
+
+## Decision
+
+Keep `process-local` as the default and active backend. Add a disabled Supabase persistence seam,
+a reviewable SQL migration and a private-bucket policy design. Activation requires all of:
+
+1. reviewed passwordless Supabase Auth and redirect handling;
+2. local migration reset plus two-user RLS tests;
+3. reviewed production migration and Security Advisor output;
+4. server-only deletion/TTL/provider-transfer orchestration;
+5. a separate guarded instruction to apply the migration.
+
+The browser may receive only a current `sb_publishable_...` key and a user Auth session. A
+`sb_secret_...` key is backend-only and bypasses RLS, so it cannot be placed in browser variables,
+bundles, logs or public configuration. User requests use the publishable key plus the user's access
+token; Postgres and Storage RLS remain the authorization boundary.
+
+Postgres stores metadata only: user-owned analysis sessions, document metadata, source locators and
+analysis snapshot hashes/counts. Raw PDFs and workbooks use a private Storage bucket with the exact
+object shape `{auth.uid()}/{session_id}/{document_id}`. Ownership uses `owner_id`; no policy relies
+on mutable user metadata or the deprecated Storage `owner` field.
+
+Authenticated clients receive SELECT plus narrowly scoped RPC execution, not table INSERT/UPDATE.
+RPCs derive the caller from `auth.uid()`, reject anonymous Auth identities, set fixed server clocks,
+never extend absolute expiry, create document rows only as `Checking`, and compute the exact object
+path. Backend-only service-role orchestration is the sole writer for validation outcomes, analysis
+status, provider-sent state, deletion completion and receipts. This is a trust boundary, not merely
+a UI convention.
+
+Deletion is ordered and retryable: mark `DELETING`, capture `provider_sent`, remove every private
+Storage object, remove child/session metadata, then record the bounded receipt. Any failure records
+`partial` and must not make a broader deletion claim. TTL cleanup uses the same orchestration. The
+design does not claim secure erasure, deletion from backups/logs or providers, compliance, or
+production readiness.
+
+## Consequences
+
+The checked-in adapter is production-shaped, and the API now selects the current
+`SessionRepository` through the persistence boundary. That boundary returns the process-local
+repository by default and fails closed for an explicit Supabase selection until Auth can supply a
+trusted owner and UUID session mapping. It does not send current capability-session data remotely.
+The existing `ProcessSessionRepository`, `TemporaryBlobStore` and strict validation service remain
+active until the activation gates pass. The dynamic upload pipeline continues to normalize once;
+future snapshot persistence consumes completed response metadata instead of re-normalizing input.

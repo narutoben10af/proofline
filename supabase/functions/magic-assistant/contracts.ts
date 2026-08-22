@@ -4,6 +4,8 @@ export const MAX_EVIDENCE_ROWS = 24;
 export const MAX_SERIES = 4;
 export const MAX_POINTS_PER_SERIES = 12;
 export const MAX_TOTAL_POINTS = 24;
+export const VERIFIED_DEMO_SESSION_ID = "src-4d6167696346696e44656d6f32303235" as const;
+export const VERIFIED_DEMO_SOURCE_ID = "file-4d6167696346696e44656d6f" as const;
 
 // These prefixes and character bounds mirror the dynamic upload identifiers produced by
 // SourceLibraryStore. They are opaque capabilities/scopes, not database UUIDs.

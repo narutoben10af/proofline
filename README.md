@@ -41,6 +41,10 @@ preview/download and future parser/provider paths receive only the derivative. S
 removes both copies. Catalog JavaScript/Launch/external-navigation actions that are not isolated
 behind a stripped interactive surface remain rejected.
 
+A disabled-by-default Supabase persistence seam and owner-RLS migrations are available for
+review. They do not change the process-local default or claim production readiness; see the
+[guarded setup path](docs/supabase-persistence-setup.md). The authenticated Magic Assistant uses
+only a numeric-free owner evidence index; authoritative values remain in the reviewed analysis.
 A standalone, disabled-by-default Supabase Google Auth handoff is documented in
 [`docs/supabase-google-auth.md`](docs/supabase-google-auth.md). It does not alter the product shell,
 enable a provider, or add credentials; public previews truthfully report sign-in as not configured.
