@@ -6,7 +6,10 @@ export const GOOGLE_API_ORIGIN = "https://generativelanguage.googleapis.com";
 export const MAX_PROVIDER_REQUEST_BYTES = 65_536;
 export const MAX_PROVIDER_RESPONSE_BYTES = 65_536;
 export const PROVIDER_TIMEOUT_MS = 8_000;
-export const MAX_PROVIDER_RETRIES = 1;
+// One call per allowlisted model keeps a single user action from amplifying a
+// project-level RPM limit. The UI can ask the user to retry after Google resets
+// the quota window.
+export const MAX_PROVIDER_RETRIES = 0;
 
 const CHART_RESPONSE_SCHEMA = {
   type: "object",
