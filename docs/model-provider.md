@@ -24,7 +24,7 @@ Primary sources:
 
 ## Implemented safety boundary
 
-Without a server-side `GOOGLE_API_KEY`, the adapter reports `not_configured` and sends nothing. With
+Without a server-side `GEMINI_API_KEY`, the adapter reports `not_configured` and sends nothing. With
 a key, a live transport is available only on the server. The key is held in a redacting secret
 wrapper inside that transport; it is never logged, returned, exposed through OpenAPI, or placed in
 browser code. The provider has no filesystem or database capability. It receives only the bounded

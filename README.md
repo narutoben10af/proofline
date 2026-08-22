@@ -99,7 +99,7 @@ Open `http://127.0.0.1:8000/docs`, check `GET /health`, or submit the request po
 PYTHONPATH=src .venv/bin/python scripts/export_contracts.py
 ```
 
-`GOOGLE_API_KEY` is optional and tests never require a live key or network call. When configured,
+`GEMINI_API_KEY` is optional and tests never require a live key or network call. When configured,
 the v1 provider calls only the fixed allowlisted Gemini Developer API endpoints for the two
 supported Gemma 4 model identifiers. It returns locally schema-validated, cited results and typed
 offline/error states; see [the provider boundary](docs/model-provider.md).

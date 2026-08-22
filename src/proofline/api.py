@@ -126,7 +126,7 @@ class SessionNoStoreMiddleware:
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.analysis_provider = GemmaProvider(
-        api_key=settings.google_api_key,
+        api_key=settings.gemini_api_key,
         model=settings.gemma_model,
         timeout_seconds=settings.gemini_request_timeout_seconds,
         max_retries=settings.gemini_max_retries,
@@ -227,7 +227,7 @@ def authorized_session(
 def health(settings: Annotated[Settings, Depends(get_settings)]) -> HealthResponse:
     return HealthResponse(
         model_provider=settings.model_provider,
-        model_configured=bool(settings.google_api_key),
+        model_configured=bool(settings.gemini_api_key),
     )
 
 
