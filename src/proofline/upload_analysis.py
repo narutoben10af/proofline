@@ -11,6 +11,9 @@ from proofline.contracts import (
     DocumentVersion,
 )
 from proofline.normalization import NormalizationResult, normalize_financial_workbook
+from proofline.parsing.base import OcrAdapter
+from proofline.parsing.ocr import OcrExtractionError
+from proofline.parsing.pdf import NativePdfAdapter, PdfExtractionError
 from proofline.parsing.workbook import StructuralXlsxAdapter, WorkbookExtractionError
 from proofline.service import analyze
 
@@ -53,6 +56,11 @@ def analyze_uploaded_evidence(
     pdf_file_id: str,
     workbook_file_id: str,
     retrieved_at: datetime,
+    ocr: OcrAdapter | None = None,
+    pdf_document_id: str | None = None,
+    workbook_document_id: str | None = None,
+    pdf_display_name: str | None = None,
+    workbook_display_name: str | None = None,
     pdf_extraction_warnings: tuple[str, ...] = (),
 ) -> AnalysisResponse:
     """Build an AnalysisResponse solely from one uploaded PDF/XLSX pair.
@@ -62,8 +70,8 @@ def analyze_uploaded_evidence(
     arithmetic source and fails closed on unsupported or ambiguous structures.
     """
 
-    pdf_document_id = f"{session_id}:report"
-    workbook_document_id = f"{session_id}:workbook"
+    pdf_document_id = pdf_document_id or f"{session_id}:report"
+    workbook_document_id = workbook_document_id or f"{session_id}:workbook"
     try:
         cells = StructuralXlsxAdapter().extract_cells(workbook_content, workbook_document_id)
     except WorkbookExtractionError as error:
@@ -82,15 +90,61 @@ def analyze_uploaded_evidence(
             "WORKBOOK_MAPPING_REQUIRED",
             "The workbook did not produce a complete, unambiguous Tier-0 metric plan.",
         )
+    mapper = AnnualReportMapper()
     try:
-        mapping = AnnualReportMapper().map(
+        mapping = mapper.map(
             pdf_content,
             pdf_document_id,
             normalized,
             inherited_warnings=pdf_extraction_warnings,
         )
-    except AnnualReportMappingError as error:
-        raise UploadAnalysisError("PDF_MAPPING_REQUIRED", str(error)) from error
+    except AnnualReportMappingError as native_mapping_error:
+        try:
+            pages = NativePdfAdapter(ocr=ocr).extract_pages(pdf_content, pdf_document_id)
+        except OcrExtractionError as error:
+            raise UploadAnalysisError("OCR_FAILED", str(error)) from error
+        except PdfExtractionError:
+            raise UploadAnalysisError(
+                "PDF_MAPPING_REQUIRED", str(native_mapping_error)
+            ) from native_mapping_error
+        usable_pages = [page for page in pages if page.span is not None]
+        if not usable_pages:
+            if any(
+                warning.code == "ocr_not_configured"
+                for page in pages
+                for warning in page.warnings
+            ):
+                raise UploadAnalysisError(
+                    "OCR_UNAVAILABLE",
+                    "The PDF contains scanned or text-sparse pages and no verified OCR runtime "
+                    "is available in this deployment.",
+                ) from native_mapping_error
+            raise UploadAnalysisError(
+                "PDF_MAPPING_REQUIRED", str(native_mapping_error)
+            ) from native_mapping_error
+        if any(
+            warning.code == "ocr_low_confidence"
+            for page in usable_pages
+            for warning in page.warnings
+        ):
+            raise UploadAnalysisError(
+                "OCR_LOW_CONFIDENCE",
+                "OCR text was below the configured confidence threshold and cannot be used as "
+                "financial evidence.",
+            ) from native_mapping_error
+        if ocr is None:
+            raise UploadAnalysisError(
+                "PDF_MAPPING_REQUIRED", str(native_mapping_error)
+            ) from native_mapping_error
+        try:
+            mapping = mapper.map_extracted_pages(
+                usable_pages,
+                pdf_document_id,
+                normalized,
+                inherited_warnings=pdf_extraction_warnings,
+            )
+        except AnnualReportMappingError as error:
+            raise UploadAnalysisError("PDF_MAPPING_REQUIRED", str(error)) from error
 
     workbook_span_ids = {
         span_id for fact in normalized.facts for span_id in fact.provenance_span_ids
@@ -107,6 +161,7 @@ def analyze_uploaded_evidence(
             normalized.entity_scope,
             retrieved_at,
             normalized,
+            pdf_display_name,
         ),
         _document(
             workbook_document_id,
@@ -116,6 +171,7 @@ def analyze_uploaded_evidence(
             normalized.entity_scope,
             retrieved_at,
             normalized,
+            workbook_display_name,
         ),
     )
     plans = {item.plan.metric_id: item.plan for item in normalized.metric_inputs}
@@ -160,6 +216,7 @@ def _document(
     entity_scope: str | None,
     retrieved_at: datetime,
     result: NormalizationResult,
+    display_name: str | None = None,
 ) -> DocumentVersion:
     if not issuer or not entity_scope:
         raise UploadAnalysisError("WORKBOOK_MAPPING_REQUIRED", "Issuer metadata is required.")
@@ -172,5 +229,5 @@ def _document(
         source_url=f"urn:proofline:session:{file_id}",
         retrieved_at=retrieved_at,
         reporting_basis=entity_scope,
-        version_label=f"FY{latest_year}",
+        version_label=display_name or f"FY{latest_year}",
     )

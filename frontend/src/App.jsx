@@ -9,7 +9,14 @@ import {
 import { ReviewDesk, downloadReviewedReport } from "./ReviewDesk";
 import { createMagicFinAuthHandoff } from "./auth";
 import { adaptProductContract, buildDeterministicDemoPdf, getAssistantAdapter, getAssistantChartSpecs, getProviderConnectionAdapter, getReviewedReportBundle, metricDefinitionRegistry, productFixture, requestReviewedPdf } from "./product-contract";
-import { analyzeSourceSession, createSourceSession, uploadSource } from "./session-api";
+import {
+  analyzeAuthenticatedSourceSession,
+  analyzeSourceSession,
+  createAuthenticatedSourceSession,
+  createSourceSession,
+  uploadAuthenticatedSource,
+  uploadSource,
+} from "./session-api";
 
 const TrendChart = lazy(() => import("./TrendChart"));
 
@@ -261,7 +268,7 @@ function CompanyPage({ data, onNavigate, onOpenAssistant, onOpenSource }) {
   );
 }
 
-function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady }) {
+function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady, auth, authState }) {
   const inputRef = useRef(null);
   const [state, setState] = useState("empty");
   const [files, setFiles] = useState([]);
@@ -285,16 +292,23 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
       setState("server-loading");
       setSessionMessage("Uploading and checking both files in the temporary private session.");
       try {
-        const results = await Promise.all(selected.map((file) => uploadSource(session, file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook", file)));
+        const authenticated = session.persistence === "supabase-private";
+        const results = await Promise.all(selected.map((file) => {
+          const role = file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook";
+          return authenticated ? uploadAuthenticatedSource(auth, session, role, file) : uploadSource(session, role, file);
+        }));
         setFiles(results.map((item, index) => item?.display_name || item?.file?.display_name || selected[index]?.name).filter(Boolean));
         setSessionMessage("Files passed validation. Building the source-cited analysis…");
-        const analysis = await analyzeSourceSession(session);
+        const analysis = authenticated
+          ? await analyzeAuthenticatedSourceSession(auth, session)
+          : await analyzeSourceSession(session);
         onAnalysisReady?.(analysis);
         setState("ready");
         setSessionMessage("Source-cited analysis ready. Open the company workspace to review it.");
       } catch (error) {
+        setSession(null);
         setState("error");
-        setSessionMessage(error instanceof Error ? error.message : "The files could not be checked safely.");
+        setSessionMessage(`${error instanceof Error ? error.message : "The files could not be checked safely."} Start a new private session to retry.`);
       }
       return;
     }
@@ -302,14 +316,23 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
     setSessionMessage("A live file session is required before local files can be uploaded or analyzed.");
   };
   const startPrivateSession = async () => {
+    if (auth?.config?.configured && authState?.status !== "authenticated") {
+      setSessionMessage("Sign in with Google before starting an owner-scoped private upload.");
+      onNavigate("/sign-in");
+      return;
+    }
     setState("connecting");
-    setSessionMessage("Starting a temporary private session…");
+    setSessionMessage("Starting a private session…");
     try {
-      const next = await createSourceSession();
+      const next = auth?.config?.configured
+        ? await createAuthenticatedSourceSession(auth)
+        : await createSourceSession();
       setSession(next);
       setState("empty");
       setFiles([]);
-      setSessionMessage("Temporary session ready. Files expire after 30 minutes idle or two hours absolute in this running process.");
+      setSessionMessage(next.persistence === "supabase-private"
+        ? "Authenticated private session ready. Files and cited evidence are owner-scoped and expire after 30 minutes idle or two hours absolute."
+        : "Temporary session ready. Files expire after 30 minutes idle or two hours absolute in this running process.");
     } catch (error) {
       setState("error");
       setSessionMessage(error instanceof Error ? error.message : "A private session is not available in this deployment.");
@@ -530,7 +553,7 @@ function DeletedSessionState({ onRestore }) {
   return <section className="route-state receipt" aria-live="polite" tabIndex="-1"><span className="state-icon success"><Check size={24} weight="bold" aria-hidden="true" /></span><p className="eyebrow supported-text">Deletion receipt</p><h1>Demo session cleared.</h1><p>The Company, Sources, History, Review Desk, and Reports fixture views are cleared for this browser session. No server data existed.</p><button autoFocus className="button primary" type="button" onClick={onRestore}>Restore verified fixture</button></section>;
 }
 
-function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData, authState, authReturnTo, onAuthSignIn, onAuthSignOut }) {
+function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData, auth, authState, authReturnTo, onAuthSignIn, onAuthSignOut }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [source, setSource] = useState(null);
   const [sessionCleared, setSessionCleared] = useState(false);
@@ -550,7 +573,7 @@ function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistan
   const pages = {
     "/": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} />,
     "/company": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} />,
-    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => { setAnalysisData(productData); setSessionCleared(false); }} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} />,
+    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => { setAnalysisData(productData); setSessionCleared(false); }} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} auth={auth} authState={authState} />,
     "/history": <HistoryPage data={data} onNavigate={onNavigate} />,
     "/review": <ReviewDesk onClearSession={() => setSessionCleared(true)} productData={data} />,
     "/reports": <ReportsPage data={data} onNavigate={onNavigate} />,
@@ -601,5 +624,5 @@ export function App({ initialRoute, initialAssistantOpen = false, initialAssista
     }, 0);
     return () => window.clearTimeout(timer);
   }, [route]);
-  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} authState={authState} authReturnTo={authReturnToRef.current} onAuthSignIn={() => authHandoff.auth.signInWithGoogle(authReturnToRef.current)} onAuthSignOut={() => authHandoff.auth.signOut()} />;
+  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} auth={authHandoff.auth} authState={authState} authReturnTo={authReturnToRef.current} onAuthSignIn={() => authHandoff.auth.signInWithGoogle(authReturnToRef.current)} onAuthSignOut={() => authHandoff.auth.signOut()} />;
 }

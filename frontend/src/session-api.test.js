@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  analyzeAuthenticatedSourceSession,
   analyzeSourceSession,
+  createAuthenticatedSourceSession,
   createSourceSession,
   deleteSourceSession,
   getSourceSession,
   listSourceFiles,
   loadPublicDemo,
   sourceContentUrl,
+  uploadAuthenticatedSource,
   uploadSource,
 } from "./session-api";
 
@@ -57,6 +60,36 @@ describe("Source Library API adapter", () => {
         headers: { "X-Proofline-CSRF": "csrf-memory-only" },
       }),
     );
+  });
+
+  it("uses the verified user token for owner-scoped session RPC, upload, and analysis", async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ session_id: "session-uuid" }) }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const auth = {
+      requireAuthenticatedOwner: vi.fn().mockResolvedValue({
+        ownerId: "10000000-0000-4000-8000-000000000001",
+        accessToken: "verified.user.access-token",
+      }),
+    };
+    const session = { session_id: "11000000-0000-4000-8000-000000000001" };
+    const file = new File(["%PDF"], "report.pdf", { type: "application/pdf" });
+
+    await createAuthenticatedSourceSession(auth);
+    await uploadAuthenticatedSource(auth, session, "report_pdf", file);
+    await analyzeAuthenticatedSourceSession(auth, session);
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/authenticated/sessions",
+      "/api/authenticated/sessions/11000000-0000-4000-8000-000000000001/files",
+      "/api/authenticated/sessions/11000000-0000-4000-8000-000000000001/analysis",
+    ]);
+    for (const [, options] of fetchMock.mock.calls) {
+      expect(options.credentials).toBe("omit");
+      expect(options.headers.Authorization).toBe("Bearer verified.user.access-token");
+      expect(JSON.stringify(options.headers)).not.toMatch(/secret|service.role|gemini/i);
+    }
   });
 
   it("keeps public demo selection explicit and surfaces stable safe errors", async () => {

@@ -121,9 +121,16 @@ Deno.test("request contract accepts only bounded question, session, and source I
     parseRequest({ ...requestPayload(), source_ids: Array(13).fill(SOURCE_A) })
   );
   await assertRejects(() => parseRequest({ ...requestPayload(), question: "x".repeat(1_001) }));
-  await assertRejects(() =>
-    parseRequest({ ...requestPayload(), session_id: "11111111-1111-4111-8111-111111111111" })
-  );
+  const liveUuidRequest = {
+    ...requestPayload(),
+    session_id: "11111111-1111-4111-8111-111111111111",
+    source_ids: [
+      "22222222-2222-4222-8222-222222222222",
+      "33333333-3333-4333-8333-333333333333",
+    ],
+  };
+  assertEquals(parseRequest(liveUuidRequest), liveUuidRequest);
+  await assertRejects(() => parseRequest({ ...requestPayload(), session_id: "not-a-session" }));
   await assertRejects(() => parseRequest({ ...requestPayload(), source_ids: ["source-static"] }));
 });
 
