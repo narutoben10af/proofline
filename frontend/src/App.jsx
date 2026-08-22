@@ -306,8 +306,9 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
         setState("ready");
         setSessionMessage("Source-cited analysis ready. Open the company workspace to review it.");
       } catch (error) {
+        setSession(null);
         setState("error");
-        setSessionMessage(error instanceof Error ? error.message : "The files could not be checked safely.");
+        setSessionMessage(`${error instanceof Error ? error.message : "The files could not be checked safely."} Start a new private session to retry.`);
       }
       return;
     }

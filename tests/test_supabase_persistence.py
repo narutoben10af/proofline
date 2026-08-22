@@ -395,3 +395,28 @@ def test_sql_regression_covers_roles_spoofing_receipts_and_storage_crud() -> Non
     ):
         assert marker in sql
     assert sql.rstrip().endswith("rollback;")
+
+
+def test_live_analysis_migration_is_owner_scoped_and_transactional() -> None:
+    sql = (
+        Path(__file__).parents[1]
+        / "supabase/migrations/20260822080000_live_upload_analysis.sql"
+    ).read_text(encoding="utf-8").lower()
+
+    assert "create table if not exists public.magic_assistant_evidence" in sql
+    assert "alter table public.magic_assistant_evidence enable row level security" in sql
+    assert "magic_assistant_evidence_select_own" in sql
+    assert "(select auth.uid()) = owner_id" in sql
+    assert "grant select on public.magic_assistant_evidence to authenticated" in sql
+    assert (
+        "grant select, insert, update, delete on public.magic_assistant_evidence to service_role"
+        in sql
+    )
+    assert "create or replace function public.persist_completed_analysis" in sql
+    assert "security invoker" in sql
+    assert "target_session_id" in sql and "target_owner_id" in sql
+    assert "revoke execute on function public.persist_completed_analysis" in sql
+    assert ") from public, anon, authenticated;" in sql
+    assert ") to service_role;" in sql
+    assert "analysis_response jsonb" in sql
+    assert "analysis_response_sha256" in sql
