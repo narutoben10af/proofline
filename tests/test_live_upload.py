@@ -117,7 +117,10 @@ def test_authenticated_pipeline_reloads_exact_private_objects_and_persists_cited
     tmp_path,
 ) -> None:
     pdf = _pdf(
+        "Live Pipeline Berhad Annual Report\n"
         "Issuer: Live Pipeline Berhad\n"
+        "Currency MYR\n"
+        "Consolidated financial statements\n"
         "Revenue grew 25% for 2026.\n"
         "Operating margin was 20% for 2026.\n"
         "Current ratio was 2 for 2026.\n"

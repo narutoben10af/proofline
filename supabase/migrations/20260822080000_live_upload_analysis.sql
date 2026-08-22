@@ -4,6 +4,10 @@
 alter table public.source_spans
   add column if not exists source_span_id text;
 
+alter table public.documents
+  add column if not exists sanitization_warning text
+    check (sanitization_warning is null or char_length(sanitization_warning) between 1 and 500);
+
 create unique index if not exists source_spans_owner_session_external_id_idx
   on public.source_spans (owner_id, session_id, source_span_id);
 

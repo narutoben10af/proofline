@@ -463,6 +463,7 @@ class SupabaseServerMaintenanceRepository:
         byte_count: int,
         content_sha256: str,
         validated_at: datetime,
+        sanitization_warning: str | None = None,
     ) -> dict[str, Any]:
         if status not in {"Ready", "Needs attention"}:
             raise PersistenceError("DOCUMENT_VALIDATION_STATUS_INVALID")
@@ -477,6 +478,17 @@ class SupabaseServerMaintenanceRepository:
             character not in "0123456789abcdef" for character in content_sha256
         ):
             raise PersistenceError("DOCUMENT_DIGEST_INVALID")
+        payload = {
+            "validation_status": status,
+            "canonical_type": canonical_type,
+            "byte_count": byte_count,
+            "content_sha256": content_sha256,
+            "validated_at": validated_at,
+        }
+        if sanitization_warning is not None:
+            if not 1 <= len(sanitization_warning) <= 500:
+                raise PersistenceError("DOCUMENT_SANITIZATION_WARNING_INVALID")
+            payload["sanitization_warning"] = sanitization_warning
         rows = _json_rows(
             self.client.request(
                 "PATCH",
@@ -486,13 +498,7 @@ class SupabaseServerMaintenanceRepository:
                     "owner_id": f"eq.{owner_id}",
                     "validation_status": "eq.Checking",
                 },
-                payload={
-                    "validation_status": status,
-                    "canonical_type": canonical_type,
-                    "byte_count": byte_count,
-                    "content_sha256": content_sha256,
-                    "validated_at": validated_at,
-                },
+                payload=payload,
                 prefer="return=representation",
             )
         )

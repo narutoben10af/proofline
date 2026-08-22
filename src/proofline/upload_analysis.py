@@ -1,21 +1,17 @@
 from __future__ import annotations
 
 import hashlib
-import re
 from datetime import datetime
-from decimal import Decimal, InvalidOperation
 
+from proofline.annual_report_mapping import AnnualReportMapper, AnnualReportMappingError
 from proofline.contracts import (
     AnalysisItem,
     AnalysisRequest,
     AnalysisResponse,
     DocumentVersion,
-    FinancialClaim,
-    MetricId,
 )
 from proofline.normalization import NormalizationResult, normalize_financial_workbook
 from proofline.parsing.base import OcrAdapter
-from proofline.parsing.models import ExtractedPage
 from proofline.parsing.ocr import OcrExtractionError
 from proofline.parsing.pdf import NativePdfAdapter, PdfExtractionError
 from proofline.parsing.workbook import StructuralXlsxAdapter, WorkbookExtractionError
@@ -65,46 +61,17 @@ def analyze_uploaded_evidence(
     workbook_document_id: str | None = None,
     pdf_display_name: str | None = None,
     workbook_display_name: str | None = None,
+    pdf_extraction_warnings: tuple[str, ...] = (),
 ) -> AnalysisResponse:
     """Build an AnalysisResponse solely from one uploaded PDF/XLSX pair.
 
-    The PDF side intentionally accepts only explicit, short claim sentences. It is a reviewed
-    deterministic boundary, not a general narrative extractor. The workbook side is mapped by the
-    generic normalizer and fails closed on unsupported or ambiguous structures.
+    The PDF side selects a bounded set of relevant annual-report pages and corroborates generic
+    metric claims against normalized workbook facts. The workbook remains the authoritative
+    arithmetic source and fails closed on unsupported or ambiguous structures.
     """
 
     pdf_document_id = pdf_document_id or f"{session_id}:report"
     workbook_document_id = workbook_document_id or f"{session_id}:workbook"
-    try:
-        pages = NativePdfAdapter(ocr=ocr).extract_pages(pdf_content, pdf_document_id)
-    except OcrExtractionError as error:
-        raise UploadAnalysisError("OCR_FAILED", str(error)) from error
-    except PdfExtractionError as error:
-        raise UploadAnalysisError("PDF_MAPPING_REQUIRED", str(error)) from error
-    if not pages or any(page.span is None for page in pages):
-        if any(
-            warning.code == "ocr_not_configured"
-            for page in pages
-            for warning in page.warnings
-        ):
-            raise UploadAnalysisError(
-                "OCR_UNAVAILABLE",
-                "The PDF contains scanned or text-sparse pages and no verified OCR runtime is "
-                "available in this deployment.",
-            )
-        raise UploadAnalysisError(
-            "PDF_MAPPING_REQUIRED",
-            "Every PDF page must contain enough native text for reviewed claim mapping; "
-            "OCR or a human mapping is required.",
-        )
-    if any(
-        warning.code == "ocr_low_confidence" for page in pages for warning in page.warnings
-    ):
-        raise UploadAnalysisError(
-            "OCR_LOW_CONFIDENCE",
-            "OCR text was below the configured confidence threshold and cannot be used as "
-            "financial evidence.",
-        )
     try:
         cells = StructuralXlsxAdapter().extract_cells(workbook_content, workbook_document_id)
     except WorkbookExtractionError as error:
@@ -123,17 +90,68 @@ def analyze_uploaded_evidence(
             "WORKBOOK_MAPPING_REQUIRED",
             "The workbook did not produce a complete, unambiguous Tier-0 metric plan.",
         )
-    claims = _claims_from_pdf(pages, normalized)
-    if not claims:
-        raise UploadAnalysisError(
-            "PDF_MAPPING_REQUIRED",
-            "The PDF contains no supported explicit metric claim sentence for the normalized "
-            "workbook.",
+    mapper = AnnualReportMapper()
+    try:
+        mapping = mapper.map(
+            pdf_content,
+            pdf_document_id,
+            normalized,
+            inherited_warnings=pdf_extraction_warnings,
         )
+    except AnnualReportMappingError as native_mapping_error:
+        try:
+            pages = NativePdfAdapter(ocr=ocr).extract_pages(pdf_content, pdf_document_id)
+        except OcrExtractionError as error:
+            raise UploadAnalysisError("OCR_FAILED", str(error)) from error
+        except PdfExtractionError:
+            raise UploadAnalysisError(
+                "PDF_MAPPING_REQUIRED", str(native_mapping_error)
+            ) from native_mapping_error
+        usable_pages = [page for page in pages if page.span is not None]
+        if not usable_pages:
+            if any(
+                warning.code == "ocr_not_configured"
+                for page in pages
+                for warning in page.warnings
+            ):
+                raise UploadAnalysisError(
+                    "OCR_UNAVAILABLE",
+                    "The PDF contains scanned or text-sparse pages and no verified OCR runtime "
+                    "is available in this deployment.",
+                ) from native_mapping_error
+            raise UploadAnalysisError(
+                "PDF_MAPPING_REQUIRED", str(native_mapping_error)
+            ) from native_mapping_error
+        if any(
+            warning.code == "ocr_low_confidence"
+            for page in usable_pages
+            for warning in page.warnings
+        ):
+            raise UploadAnalysisError(
+                "OCR_LOW_CONFIDENCE",
+                "OCR text was below the configured confidence threshold and cannot be used as "
+                "financial evidence.",
+            ) from native_mapping_error
+        if ocr is None:
+            raise UploadAnalysisError(
+                "PDF_MAPPING_REQUIRED", str(native_mapping_error)
+            ) from native_mapping_error
+        try:
+            mapping = mapper.map_extracted_pages(
+                usable_pages,
+                pdf_document_id,
+                normalized,
+                inherited_warnings=pdf_extraction_warnings,
+            )
+        except AnnualReportMappingError as error:
+            raise UploadAnalysisError("PDF_MAPPING_REQUIRED", str(error)) from error
 
-    source_spans = tuple(
-        [page.span for page in pages if page.span is not None] + [cell.span for cell in cells]
-    )
+    workbook_span_ids = {
+        span_id for fact in normalized.facts for span_id in fact.provenance_span_ids
+    }
+    workbook_spans = tuple(cell.span for cell in cells if cell.span.id in workbook_span_ids)
+    pdf_spans = tuple(page.span for page in mapping.pages if page.span is not None)
+    source_spans = tuple({span.id: span for span in (*pdf_spans, *workbook_spans)}.values())
     documents = (
         _document(
             pdf_document_id,
@@ -159,7 +177,7 @@ def analyze_uploaded_evidence(
     plans = {item.plan.metric_id: item.plan for item in normalized.metric_inputs}
     items = tuple(
         AnalysisItem(claim_id=claim.id, calculation_plan=plans[claim.metric_id])
-        for claim in claims
+        for claim in mapping.claims
         if claim.metric_id in plans
     )
     if not items:
@@ -170,7 +188,7 @@ def analyze_uploaded_evidence(
     request = AnalysisRequest(
         documents=documents,
         source_spans=source_spans,
-        claims=claims,
+        claims=mapping.claims,
         observations=tuple(fact.observation for fact in normalized.facts),
         items=items,
     )
@@ -213,131 +231,3 @@ def _document(
         reporting_basis=entity_scope,
         version_label=display_name or f"FY{latest_year}",
     )
-
-
-_CLAIM_PATTERNS: tuple[tuple[MetricId, re.Pattern[str], Decimal], ...] = (
-    (
-        MetricId.REVENUE_GROWTH_YOY,
-        re.compile(
-            r"\brevenue\s+(?:grew|growth(?:\s+yoy)?\s+(?:was|of))\s+"
-            r"(?P<value>[+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*%"
-            r"(?:\s+(?:in|for)\s+(?P<year>20\d{2}))?",
-            re.IGNORECASE,
-        ),
-        Decimal("0.01"),
-    ),
-    (
-        MetricId.OPERATING_MARGIN,
-        re.compile(
-            r"\boperating\s+margin\s+(?:was|of)\s+"
-            r"(?P<value>[+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*%"
-            r"(?:\s+(?:in|for)\s+(?P<year>20\d{2}))?",
-            re.IGNORECASE,
-        ),
-        Decimal("0.01"),
-    ),
-    (
-        MetricId.CURRENT_RATIO,
-        re.compile(
-            r"\bcurrent\s+ratio\s+(?:was|of)\s+"
-            r"(?P<value>[+-]?(?:\d+(?:\.\d+)?|\.\d+))"
-            r"(?:\s+(?:in|for)\s+(?P<year>20\d{2}))?",
-            re.IGNORECASE,
-        ),
-        Decimal("1"),
-    ),
-    (
-        MetricId.FCF_MARGIN,
-        re.compile(
-            r"\b(?:project[- ]defined\s+)?(?:free[- ]cash[- ]flow|fcf)\s+margin\s+"
-            r"(?:was|of)\s+(?P<value>[+-]?(?:\d+(?:\.\d+)?|\.\d+))\s*%"
-            r"(?:\s+(?:in|for)\s+(?P<year>20\d{2}))?",
-            re.IGNORECASE,
-        ),
-        Decimal("0.01"),
-    ),
-)
-
-
-def _claims_from_pdf(
-    pages: tuple[ExtractedPage, ...] | list[ExtractedPage], result: NormalizationResult
-) -> tuple[FinancialClaim, ...]:
-    plans = {item.plan.metric_id: item for item in result.metric_inputs}
-    claims: list[FinancialClaim] = []
-    seen: set[MetricId] = set()
-    declared_issuer = _declared_issuer(pages)
-    if declared_issuer is not None and _label(declared_issuer) != _label(result.issuer or ""):
-        raise UploadAnalysisError(
-            "PDF_MAPPING_REQUIRED",
-            "The PDF issuer does not match the workbook issuer metadata.",
-        )
-    for page in pages:
-        if page.span is None:
-            continue
-        quote = page.span.source.quote
-        for metric_id, pattern, factor in _CLAIM_PATTERNS:
-            match = pattern.search(quote)
-            if match is None:
-                continue
-            if metric_id in seen:
-                raise UploadAnalysisError(
-                    "PDF_MAPPING_REQUIRED",
-                    f"The PDF contains duplicate {metric_id.value} claim candidates.",
-                )
-            plan = plans.get(metric_id)
-            if plan is None:
-                raise UploadAnalysisError(
-                    "PDF_MAPPING_REQUIRED",
-                    f"The PDF includes {metric_id.value}, but the workbook has no compatible plan.",
-                )
-            year = match.group("year")
-            if year and int(year) != plan.period.end.year:
-                raise UploadAnalysisError(
-                    "PDF_MAPPING_REQUIRED",
-                    f"The PDF claim period does not match the normalized {metric_id.value} period.",
-                )
-            try:
-                value = Decimal(match.group("value")) * factor
-            except (InvalidOperation, TypeError) as error:
-                raise UploadAnalysisError(
-                    "PDF_MAPPING_REQUIRED", "A PDF claim value is not a finite decimal."
-                ) from error
-            if not value.is_finite():
-                raise UploadAnalysisError(
-                    "PDF_MAPPING_REQUIRED", "A PDF claim value is not a finite decimal."
-                )
-            claims.append(
-                FinancialClaim(
-                    id=f"claim:{page.span.document_version_id}:{metric_id.value}",
-                    text=match.group(0),
-                    entity=result.entity_scope,
-                    metric_id=metric_id,
-                    period=plan.period,
-                    asserted_value=value,
-                    unit="ratio" if metric_id == MetricId.CURRENT_RATIO else "ratio",
-                    currency=result.currency,
-                    source_span_id=page.span.id,
-                )
-            )
-            seen.add(metric_id)
-    return tuple(claims)
-
-
-def _declared_issuer(pages: tuple[ExtractedPage, ...] | list[ExtractedPage]) -> str | None:
-    for page in pages:
-        if page.span is None:
-            continue
-        match = re.search(
-            r"\bissuer\s*:\s*(.+?)(?=\brevenue\s+(?:grew|growth)\b|"
-            r"\boperating\s+margin\b|\bcurrent\s+ratio\b|"
-            r"\b(?:project[- ]defined\s+)?(?:free[- ]cash[- ]flow|fcf)\s+margin\b|$)",
-            page.span.source.quote,
-            re.IGNORECASE,
-        )
-        if match is not None:
-            return match.group(1).strip()
-    return None
-
-
-def _label(value: str) -> str:
-    return " ".join(value.casefold().split())

@@ -183,6 +183,7 @@ def register_validated_upload(
             byte_count=len(content),
             content_sha256=digest,
             validated_at=datetime.now(UTC),
+            sanitization_warning=sanitization_warning,
         )
         return AuthenticatedSourceFile(
             file_id=document_id,
@@ -251,6 +252,9 @@ def analyze_authenticated_session(
                 datetime.fromisoformat(str(workbook_row["uploaded_at"]).replace("Z", "+00:00")),
             ),
             ocr=ocr,
+            pdf_extraction_warnings=(str(pdf_row["sanitization_warning"]),)
+            if pdf_row.get("sanitization_warning")
+            else (),
         )
         payload = response.model_dump(mode="json")
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()

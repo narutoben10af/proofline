@@ -561,6 +561,7 @@ def analyze_source_session(request: Request, session_id: str) -> AnalysisRespons
         raise LibraryError("REQUIRED_FILES_NOT_READY", 409)
     pdf = source_store(request).get_file(record, pdf_metadata.file_id)
     workbook = source_store(request).get_file(record, workbook_metadata.file_id)
+    pdf_warnings = (pdf.sanitization.warning,) if pdf.sanitization is not None else ()
     try:
         return analyze_uploaded_evidence(
             pdf_content=pdf.path.read_bytes(),
@@ -571,6 +572,7 @@ def analyze_source_session(request: Request, session_id: str) -> AnalysisRespons
             retrieved_at=max(pdf.metadata.uploaded_at, workbook.metadata.uploaded_at),
             pdf_display_name=pdf.metadata.display_name,
             workbook_display_name=workbook.metadata.display_name,
+            pdf_extraction_warnings=pdf_warnings,
         )
     except UploadAnalysisError as error:
         raise LibraryError(error.code, 422) from error

@@ -236,6 +236,32 @@ def test_pdf_is_byte_deterministic_and_sections_are_ordered() -> None:
     assert DATA_HANDLING_DISCLOSURE in " ".join(text.split())
 
 
+def test_pdf_is_a_substantial_a4_editorial_report_with_page_chrome() -> None:
+    reader = PdfReader(__import__("io").BytesIO(render_pdf(_bundle())))
+
+    assert 5 <= len(reader.pages) <= 7
+    for page_number, page in enumerate(reader.pages, start=1):
+        assert float(page.mediabox.width) == pytest.approx(595.276, abs=0.01)
+        assert float(page.mediabox.height) == pytest.approx(841.89, abs=0.01)
+        text = page.extract_text() or ""
+        assert len(text.strip()) >= 700
+        assert f"PAGE {page_number:02d}" in text
+        assert "EDITORIAL LEDGER - PROTOTYPE - HUMAN REVIEW REQUIRED" in text
+
+
+def test_pdf_translates_financial_ratios_and_preserves_auditable_visual_fallback() -> None:
+    text = " ".join(_text(render_pdf(_bundle())).split())
+
+    for concept in ("Growth", "Profitability", "Liquidity", "Cash flow"):
+        assert concept in text
+    assert "point-in-time coverage indicator" in text
+    assert "non-GAAP view" in text
+    assert "discrete period comparison" in text
+    assert "Exact value" in text
+    assert "Evidence and provenance appendix" in text
+    assert "recommended next step" in text.lower()
+
+
 @pytest.mark.parametrize(
     ("company", "currency"),
     (("Northstar Manufacturing plc", "GBP"), ("Sakura Components Co.", "JPY")),
