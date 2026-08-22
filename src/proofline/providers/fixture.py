@@ -2,6 +2,8 @@ from proofline.contracts import FinancialClaim
 from proofline.providers.contracts import (
     AssistantRequest,
     AssistantResult,
+    ChartRequest,
+    ChartResult,
     ClaimExtractionRequest,
     ClaimExtractionResult,
     EvidenceCitation,
@@ -85,6 +87,22 @@ class DeterministicFixtureProvider:
             state=ProviderState.FALLBACK,
             claims=claims,
             citations=citations,
+            provider="deterministic_fixture",
+            model="fixture-v1",
+            disclosure=(
+                "Deterministic fixture only; no network request or model inference occurred."
+            ),
+        )
+
+    async def propose_chart(self, request: ChartRequest) -> ChartResult:
+        del request
+        return ChartResult(
+            state=ProviderState.ERROR,
+            error=ProviderError(
+                code="unsupported_prompt",
+                message="This deterministic fixture has no reviewed chart for that prompt.",
+                retryable=False,
+            ),
             provider="deterministic_fixture",
             model="fixture-v1",
             disclosure=(

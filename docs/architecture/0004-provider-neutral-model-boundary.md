@@ -1,4 +1,4 @@
-# ADR 0003: Provider-neutral, server-only model boundary
+# ADR 0004: Provider-neutral, server-only model boundary
 
 - Status: accepted for prototype contracts
 - Date: 2026-08-22
@@ -16,6 +16,12 @@ Document text is eligible for the provider only when the request explicitly reco
 `provider_sent: true`. The adapter receives only already-selected bounded evidence, cannot read
 files or databases, and accepts only locally validated cited JSON. No API key crosses the server
 boundary, and connection status never returns raw upstream errors.
+
+Assistant visualization requests are data-only proposals. The allowlisted chart vocabulary is
+line, bar, or comparison; proposals may contain stable observation/metric/source IDs and safe text,
+but never authoritative values or executable rendering content. The backend resolves Decimal
+values from normalized evidence, validates issuer/unit/currency/period compatibility, and returns a
+bounded cited chart specification. Source editing, upload, and deletion are outside this interface.
 
 ## Consequences
 

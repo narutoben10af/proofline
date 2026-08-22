@@ -2,15 +2,19 @@ import asyncio
 import json
 import urllib.error
 import urllib.request
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
-from pydantic import Field, SecretStr, ValidationError, model_validator
+from pydantic import BaseModel, Field, SecretStr, ValidationError, model_validator
 
 from proofline.contracts import FinancialClaim, FrozenModel
 from proofline.providers.base import ProviderUnavailable
+from proofline.providers.charts import resolve_chart_proposal
 from proofline.providers.contracts import (
     AssistantRequest,
     AssistantResult,
+    ChartProposal,
+    ChartRequest,
+    ChartResult,
     ClaimExtractionRequest,
     ClaimExtractionResult,
     EvidenceCitation,
@@ -22,6 +26,11 @@ from proofline.providers.contracts import (
 
 SUPPORTED_GEMMA_4_MODELS = frozenset({"gemma-4-31b-it", "gemma-4-26b-a4b-it"})
 API_ROOT = "https://generativelanguage.googleapis.com/v1beta/models"
+ALLOWED_ENDPOINTS = frozenset(
+    f"{API_ROOT}/{model}:generateContent" for model in SUPPORTED_GEMMA_4_MODELS
+)
+MAX_REQUEST_BYTES = 196_608
+MAX_RESPONSE_BYTES = 65_536
 NO_SEND_DISCLOSURE = "No prompt or document content was sent to an external provider."
 SENT_DISCLOSURE = (
     "Only the bounded evidence excerpts in this request were sent to Gemma 4 through the hosted "
@@ -47,9 +56,14 @@ class GeminiHttpTransport:
         return await asyncio.to_thread(self._post, url, payload, timeout_seconds)
 
     def _post(self, url: str, payload: dict[str, Any], timeout_seconds: float) -> dict[str, Any]:
+        if url not in ALLOWED_ENDPOINTS:
+            raise ValueError("provider endpoint is not allowlisted")
+        encoded = json.dumps(payload, separators=(",", ":")).encode()
+        if len(encoded) > MAX_REQUEST_BYTES:
+            raise ValueError("provider request exceeded 196608 bytes")
         request = urllib.request.Request(
             url,
-            data=json.dumps(payload, separators=(",", ":")).encode(),
+            data=encoded,
             headers={
                 "Content-Type": "application/json",
                 "x-goog-api-key": self._api_key.get_secret_value(),
@@ -58,8 +72,8 @@ class GeminiHttpTransport:
         )
         opener = urllib.request.build_opener(_NoRedirectHandler())
         with opener.open(request, timeout=timeout_seconds) as response:
-            raw = response.read(65_537)
-        if len(raw) > 65_536:
+            raw = response.read(MAX_RESPONSE_BYTES + 1)
+        if len(raw) > MAX_RESPONSE_BYTES:
             raise ValueError("provider response exceeded 65536 bytes")
         decoded = json.loads(raw)
         if not isinstance(decoded, dict):
@@ -88,6 +102,10 @@ class RemoteExtractionPayload(FrozenModel):
         if any(claim.source_span_id not in cited for claim in self.claims):
             raise ValueError("each claim requires a source-span citation")
         return self
+
+
+class RemoteConnectionPayload(FrozenModel):
+    ok: Literal[True]
 
 
 class GemmaProvider:
@@ -137,7 +155,8 @@ class GemmaProvider:
             )
         try:
             response = await self._request(
-                'Return exactly the JSON object {"ok":true}. Do not add other text.'
+                'Return exactly the JSON object {"ok":true}. Do not add other text.',
+                RemoteConnectionPayload,
             )
             parsed = json.loads(self._response_text(response))
             if parsed != {"ok": True}:
@@ -181,7 +200,7 @@ class GemmaProvider:
         )
         try:
             remote = RemoteAssistantPayload.model_validate_json(
-                self._response_text(await self._request(prompt))
+                self._response_text(await self._request(prompt, RemoteAssistantPayload))
             )
             for citation in remote.citations:
                 if allowed_evidence.get(citation.evidence_id) != citation.source_span_id:
@@ -194,6 +213,38 @@ class GemmaProvider:
             state=ProviderState.COMPLETED,
             content=remote.content,
             citations=remote.citations,
+            provider="gemma_via_gemini_api",
+            model=self.model,
+            disclosure=SENT_DISCLOSURE,
+        )
+
+    async def propose_chart(self, request: ChartRequest) -> ChartResult:
+        if not self._transport:
+            return self._chart_unavailable(ProviderState.NOT_CONFIGURED)
+        prompt = json.dumps(
+            {
+                "task": (
+                    "Propose a line, bar, or comparison chart using only supplied observation or "
+                    "metric-result IDs. Do not return numeric values, code, HTML, or expressions."
+                ),
+                "question": request.prompt,
+                "observations": [item.model_dump(mode="json") for item in request.observations],
+                "metric_results": [item.model_dump(mode="json") for item in request.metric_results],
+            },
+            separators=(",", ":"),
+        )
+        try:
+            proposal = ChartProposal.model_validate_json(
+                self._response_text(await self._request(prompt, ChartProposal))
+            )
+            chart = resolve_chart_proposal(proposal, request)
+        except (TimeoutError, urllib.error.URLError):
+            return self._chart_unavailable(ProviderState.OFFLINE)
+        except (ValidationError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            return self._chart_error()
+        return ChartResult(
+            state=ProviderState.COMPLETED,
+            chart=chart,
             provider="gemma_via_gemini_api",
             model=self.model,
             disclosure=SENT_DISCLOSURE,
@@ -219,7 +270,7 @@ class GemmaProvider:
         )
         try:
             remote = RemoteExtractionPayload.model_validate_json(
-                self._response_text(await self._request(prompt))
+                self._response_text(await self._request(prompt, RemoteExtractionPayload))
             )
             if any(citation.source_span_id not in allowed_spans for citation in remote.citations):
                 raise ValueError("citation not present in supplied pages")
@@ -236,13 +287,14 @@ class GemmaProvider:
             disclosure=SENT_DISCLOSURE,
         )
 
-    async def _request(self, prompt: str) -> dict[str, Any]:
+    async def _request(self, prompt: str, response_model: type[BaseModel]) -> dict[str, Any]:
         if not self._transport:
             raise RuntimeError("transport unavailable")
         payload = {
             "contents": [{"role": "user", "parts": [{"text": prompt}]}],
             "generationConfig": {
                 "responseMimeType": "application/json",
+                "responseJsonSchema": _gemini_schema(response_model.model_json_schema()),
                 "temperature": 0,
                 "maxOutputTokens": 2048,
             },
@@ -258,6 +310,12 @@ class GemmaProvider:
                     ),
                     timeout=self.timeout_seconds,
                 )
+            except urllib.error.HTTPError as error:
+                if error.code not in {408, 429, 500, 502, 503, 504}:
+                    raise ValueError("provider request was rejected") from None
+                last_error = error
+                if attempt == self.max_retries:
+                    raise
             except (TimeoutError, urllib.error.URLError) as error:
                 last_error = error
                 if attempt == self.max_retries:
@@ -297,6 +355,29 @@ class GemmaProvider:
             disclosure=SENT_DISCLOSURE,
         )
 
+    def _chart_unavailable(self, state: ProviderState) -> ChartResult:
+        return ChartResult(
+            state=state,
+            provider="gemma_via_gemini_api",
+            model=self.model,
+            disclosure=NO_SEND_DISCLOSURE
+            if state == ProviderState.NOT_CONFIGURED
+            else SENT_DISCLOSURE,
+        )
+
+    def _chart_error(self) -> ChartResult:
+        return ChartResult(
+            state=ProviderState.ERROR,
+            error=ProviderError(
+                code="provider_error",
+                message="The provider returned an invalid or unresolvable chart proposal.",
+                retryable=False,
+            ),
+            provider="gemma_via_gemini_api",
+            model=self.model,
+            disclosure=SENT_DISCLOSURE,
+        )
+
     def _extraction_unavailable(self, state: ProviderState) -> ClaimExtractionResult:
         return ClaimExtractionResult(
             state=state,
@@ -319,3 +400,41 @@ class GemmaProvider:
             model=self.model,
             disclosure=SENT_DISCLOSURE,
         )
+
+
+_GEMINI_SCHEMA_KEYS = frozenset(
+    {
+        "$defs",
+        "$ref",
+        "type",
+        "format",
+        "title",
+        "description",
+        "enum",
+        "items",
+        "minItems",
+        "maxItems",
+        "minimum",
+        "maximum",
+        "anyOf",
+        "oneOf",
+        "properties",
+        "additionalProperties",
+        "required",
+    }
+)
+
+
+def _gemini_schema(value, *, mapping: bool = False):
+    """Keep only the JSON Schema subset documented for responseJsonSchema."""
+    if isinstance(value, dict):
+        if mapping:
+            return {key: _gemini_schema(item) for key, item in value.items()}
+        return {
+            key: _gemini_schema(item, mapping=key in {"properties", "$defs"})
+            for key, item in value.items()
+            if key in _GEMINI_SCHEMA_KEYS
+        }
+    if isinstance(value, list):
+        return [_gemini_schema(item) for item in value]
+    return value

@@ -19,10 +19,14 @@ The product is designed around the DevLeague Lab 1 brief: combine financial PDFs
 
 ## Status
 
-The repository now includes a minimal contract-first FastAPI backend. Versioned JSON contracts,
-four deterministic Tier 0 metrics, conservative classification, and fixture-driven tests are
-implemented. Parsing and live hosted-model transport remain intentionally stubbed; see the
-[API contract notes](docs/api-contracts.md) for the stable frontend boundary and limitations.
+The repository now includes a minimal contract-first FastAPI backend plus the isolated Company
+Lens and deterministic reporting slice. Versioned JSON contracts, four deterministic Tier 0
+metrics, conservative classification, official-source FY2025 economic context fixtures, one
+historical series per reviewed company, and a typed ReportLab PDF renderer are implemented. Parsing
+adapters remain intentionally stubbed. The optional server-side Gemma 4 transport is implemented
+behind bounded, cited, provider-neutral contracts and stays disabled without a server credential;
+see the [API contract notes](docs/api-contracts.md) for the stable frontend boundary and
+limitations.
 
 ## Intended demo flow
 
@@ -69,6 +73,7 @@ Only public hackathon fixtures may be sent to hosted Gemma 4. According to the c
 - [`docs/decisions/`](docs/decisions/) — retained legacy ADR template from the repository bootstrap
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution and pull-request workflow
 - [`SECURITY.md`](SECURITY.md) — security policy and private reporting guidance
+- [`docs/privacy/`](docs/privacy/) — Malaysian PDPA readiness analysis, non-publishable data-handling draft, data-flow register, incident runbook, and review gate (not legal advice or a compliance claim)
 
 ## Getting started
 
@@ -89,9 +94,16 @@ Open `http://127.0.0.1:8000/docs`, check `GET /health`, or submit the request po
 PYTHONPATH=src .venv/bin/python scripts/export_contracts.py
 ```
 
-`GEMINI_API_KEY` is optional and tests never require a live model. The v1 provider defaults to
-configured Gemma 4 but intentionally stops before network transport; it is a narrow interface for a
-later reviewed adapter.
+`GOOGLE_API_KEY` is optional and tests never require a live key or network call. When configured,
+the v1 provider calls only the fixed allowlisted Gemini Developer API endpoints for the two
+supported Gemma 4 model identifiers. It returns locally schema-validated, cited results and typed
+offline/error states; see [the provider boundary](docs/model-provider.md).
+
+The compact fixture-backed lenses are available at `GET /api/v1/company-lenses/apple-fy2025` and
+`GET /api/v1/company-lenses/pcg-fy2025`. `POST /api/v1/reports/pdf` accepts the complete immutable
+`ReportRenderBundle`; it returns an attachment with `ETag`, `X-Content-SHA256`, and `no-store`.
+Use `?output=evidence-json` on the same endpoint for the reviewed canonical JSON fallback. Rendering
+never fetches a source, refreshes economic data, recalculates a metric, or creates a forecast.
 
 ### Current limitations
 
@@ -100,9 +112,11 @@ later reviewed adapter.
 - Only the four Tier 0 metrics are accepted. Arithmetic uses Python `Decimal` and typed allowlisted
   plans; no model-generated code or expressions are executed.
 - Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
-- There is no database, document-byte upload, OCR, hosted model call, frontend, or production
-  privacy/compliance claim in this slice. Session endpoints retain and delete process-local intake
-  metadata only; they do not yet run processing adapters.
+- There is no database, document-byte upload, OCR, or production privacy/compliance claim in this
+  slice. Session endpoints retain and delete process-local intake metadata only; they do not yet
+  run processing adapters. The optional hosted-model path accepts only explicitly selected bounded
+  public-fixture evidence and is disabled by default. Session deletion cannot remove provider-held
+  data or already downloaded PDF or JSON exports.
 - `uv.lock` is the fully resolved cross-platform dependency lock; `pyproject.toml` remains the
   human-edited dependency declaration.
 

@@ -15,11 +15,15 @@ from proofline.metrics import REGISTRY
 from proofline.providers.contracts import (
     AssistantRequest,
     AssistantResult,
+    ChartRequest,
+    ChartResult,
+    ChartSpec,
     ClaimExtractionRequest,
     ClaimExtractionResult,
     ProviderConnectionTest,
     ProviderStatus,
 )
+from proofline.report_contracts import CompanyLens, ReportRenderBundle
 
 
 def write_json(path: Path, value: dict) -> None:
@@ -48,6 +52,11 @@ def main() -> None:
     write_json(
         target / "provider-connection-test.schema.json", ProviderConnectionTest.model_json_schema()
     )
+    write_json(target / "chart-request.schema.json", ChartRequest.model_json_schema())
+    write_json(target / "chart-result.schema.json", ChartResult.model_json_schema())
+    write_json(target / "chart-spec.schema.json", ChartSpec.model_json_schema())
+    write_json(target / "company-lens.schema.json", CompanyLens.model_json_schema())
+    write_json(target / "report-render-bundle.schema.json", ReportRenderBundle.model_json_schema())
     write_json(
         target / "metric-registry.json",
         {

@@ -36,11 +36,19 @@ text, outputs, retries, and timeouts. A request containing source context must e
 extracted claim must resolve to a cited source-span ID. Loading, offline, not-configured, error, and
 fallback are typed states.
 
+Chart requests use the same evidence-only boundary. The model can propose only a line, bar, or
+comparison chart by referencing backend-selected observation or deterministic metric IDs, their
+source-span IDs, and a period range. It cannot supply numeric chart values or executable rendering
+content. Proofline resolves values locally, rejects unknown or dimensionally mixed evidence, caps
+series and points, and emits a cited frontend-safe `ChartSpec`. The assistant has no source editing,
+upload, or deletion operation.
+
 `GET /api/v1/providers/model` and `POST /api/v1/providers/model/test` reveal no key or raw provider
-error. The connection test sends no document content. Live generation uses Google's documented
-`generateContent` endpoint, a hard model allowlist, JSON response mode, zero temperature, bounded
-output, request timeouts, and at most two retries. Remote content is accepted only after local
-schema, size, and citation validation.
+error. The connection test sends no document content. Live generation uses exact HTTPS endpoint
+allowlisting for Google's documented `generateContent` paths, refuses redirects, uses structured
+JSON response schemas and zero temperature, caps request/response bytes and output tokens, enforces
+request timeouts, and permits at most two transient-error retries. Remote content is accepted only
+after local schema, size, reference, dimension, and citation validation.
 
 The deterministic fixture provider supports reproducible tests and scripted demonstrations. It
 returns only injected answers/claims, labels itself as a fixture fallback, refuses unsupported

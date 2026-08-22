@@ -3,6 +3,8 @@ from typing import Protocol
 from proofline.providers.contracts import (
     AssistantRequest,
     AssistantResult,
+    ChartRequest,
+    ChartResult,
     ClaimExtractionRequest,
     ClaimExtractionResult,
     ProviderConnectionTest,
@@ -20,6 +22,8 @@ class AnalysisProvider(Protocol):
     async def test_connection(self) -> ProviderConnectionTest: ...
 
     async def assist(self, request: AssistantRequest) -> AssistantResult: ...
+
+    async def propose_chart(self, request: ChartRequest) -> ChartResult: ...
 
     async def extract_claims(self, request: ClaimExtractionRequest) -> ClaimExtractionResult: ...
 

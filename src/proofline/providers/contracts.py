@@ -1,9 +1,22 @@
+from datetime import date
+from decimal import Decimal
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
-from proofline.contracts import FinancialClaim, FrozenModel, Identifier
+from proofline.contracts import (
+    FactObservation,
+    FinancialClaim,
+    FrozenModel,
+    Identifier,
+    MetricResult,
+)
+
+SafeChartText = Annotated[
+    str,
+    StringConstraints(min_length=1, max_length=500, pattern=r"^[^<>{}]*$"),
+]
 
 
 class ProviderState(StrEnum):
@@ -108,6 +121,117 @@ class ClaimExtractionResult(FrozenModel):
         cited = {citation.source_span_id for citation in self.citations}
         if any(claim.source_span_id not in cited for claim in self.claims):
             raise ValueError("every extracted claim requires a source-span citation")
+        if (self.state == ProviderState.ERROR) != (self.error is not None):
+            raise ValueError("only error state may contain an error")
+        return self
+
+
+class ChartType(StrEnum):
+    LINE = "line"
+    BAR = "bar"
+    COMPARISON = "comparison"
+
+
+class ChartSeriesProposal(FrozenModel):
+    label: SafeChartText
+    observation_ids: tuple[Identifier, ...] = Field(default=(), max_length=12)
+    metric_result_ids: tuple[Identifier, ...] = Field(default=(), max_length=12)
+    source_span_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=24)
+
+    @model_validator(mode="after")
+    def one_reference_kind(self) -> "ChartSeriesProposal":
+        if bool(self.observation_ids) == bool(self.metric_result_ids):
+            raise ValueError("a chart series must reference observations or metric results")
+        identifiers = self.observation_ids or self.metric_result_ids
+        if len(identifiers) != len(set(identifiers)):
+            raise ValueError("chart point IDs must be unique within a series")
+        if len(self.source_span_ids) != len(set(self.source_span_ids)):
+            raise ValueError("chart source span IDs must be unique within a series")
+        return self
+
+
+class ChartProposal(FrozenModel):
+    chart_type: ChartType
+    title: SafeChartText
+    description: SafeChartText
+    period_start: date | None = None
+    period_end: date
+    series: tuple[ChartSeriesProposal, ...] = Field(min_length=1, max_length=4)
+
+    @model_validator(mode="after")
+    def valid_range_and_size(self) -> "ChartProposal":
+        if self.period_start is not None and self.period_start > self.period_end:
+            raise ValueError("chart period start must not follow period end")
+        total = sum(len(item.observation_ids or item.metric_result_ids) for item in self.series)
+        if total > 24:
+            raise ValueError("chart proposal exceeds 24 total points")
+        return self
+
+
+class ChartRequest(FrozenModel):
+    prompt: str = Field(min_length=1, max_length=2_000)
+    observations: tuple[FactObservation, ...] = Field(min_length=1, max_length=24)
+    metric_results: tuple[MetricResult, ...] = Field(default=(), max_length=12)
+    provider_sent: Literal[True]
+
+    @model_validator(mode="after")
+    def unique_backend_ids(self) -> "ChartRequest":
+        for label, identifiers in (
+            ("observation", [item.id for item in self.observations]),
+            ("metric result", [item.id for item in self.metric_results]),
+        ):
+            if len(identifiers) != len(set(identifiers)):
+                raise ValueError(f"duplicate {label} IDs are not allowed")
+        observation_ids = {item.id for item in self.observations}
+        if any(
+            input_id not in observation_ids
+            for result in self.metric_results
+            for input_id in result.input_observation_ids
+        ):
+            raise ValueError("metric result inputs must resolve to supplied observations")
+        return self
+
+
+class ChartPoint(FrozenModel):
+    id: Identifier
+    period_start: date | None = None
+    period_end: date
+    value: Decimal
+    source_span_ids: tuple[Identifier, ...] = Field(min_length=1, max_length=8)
+
+
+class ChartSeries(FrozenModel):
+    label: SafeChartText
+    entity_scope: str = Field(min_length=1, max_length=256)
+    unit: str = Field(min_length=1, max_length=64)
+    currency: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
+    points: tuple[ChartPoint, ...] = Field(min_length=1, max_length=12)
+
+
+class ChartSpec(FrozenModel):
+    chart_type: ChartType
+    title: SafeChartText
+    description: SafeChartText
+    period_start: date | None = None
+    period_end: date
+    series: tuple[ChartSeries, ...] = Field(min_length=1, max_length=4)
+    citations: tuple[EvidenceCitation, ...] = Field(min_length=1, max_length=48)
+    authoritative_values: Literal["deterministic_backend"] = "deterministic_backend"
+
+
+class ChartResult(FrozenModel):
+    state: ProviderState
+    chart: ChartSpec | None = None
+    error: ProviderError | None = None
+    provider: str
+    model: str
+    disclosure: str = Field(min_length=1, max_length=500)
+
+    @model_validator(mode="after")
+    def state_is_consistent(self) -> "ChartResult":
+        completed = self.state in {ProviderState.COMPLETED, ProviderState.FALLBACK}
+        if completed != (self.chart is not None):
+            raise ValueError("only completed or fallback chart states may contain a chart")
         if (self.state == ProviderState.ERROR) != (self.error is not None):
             raise ValueError("only error state may contain an error")
         return self

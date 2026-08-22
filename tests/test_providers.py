@@ -1,5 +1,8 @@
 import asyncio
 import json
+import urllib.error
+import urllib.request
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -7,10 +10,11 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from proofline.api import app
-from proofline.contracts import AnalysisRequest
+from proofline.contracts import AnalysisRequest, FactObservation, Period
 from proofline.providers.contracts import (
     AssistantRequest,
     AssistantResult,
+    ChartRequest,
     ClaimExtractionRequest,
     ClaimExtractionResult,
     EvidenceCitation,
@@ -19,7 +23,14 @@ from proofline.providers.contracts import (
     SourcePage,
 )
 from proofline.providers.fixture import DeterministicFixtureProvider
-from proofline.providers.gemma import GemmaProvider
+from proofline.providers.gemma import (
+    ALLOWED_ENDPOINTS,
+    MAX_REQUEST_BYTES,
+    MAX_RESPONSE_BYTES,
+    GeminiHttpTransport,
+    GemmaProvider,
+    _NoRedirectHandler,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tier0_analysis.json"
 
@@ -62,6 +73,40 @@ def extraction_request(text: str = "Revenue increased.") -> ClaimExtractionReque
     )
 
 
+def chart_request(
+    observations: tuple[FactObservation, ...] | None = None,
+) -> ChartRequest:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))["request"]
+    analysis = AnalysisRequest.model_validate(payload)
+    selected = observations or tuple(
+        item for item in analysis.observations if item.id.startswith("revenue-")
+    )
+    return ChartRequest(
+        prompt="Chart revenue over time",
+        observations=selected,
+        provider_sent=True,
+    )
+
+
+def chart_payload(**overrides) -> dict:
+    payload = {
+        "chart_type": "line",
+        "title": "Revenue trend",
+        "description": "Reported annual revenue",
+        "period_start": "2024-01-01",
+        "period_end": "2025-12-31",
+        "series": [
+            {
+                "label": "Revenue",
+                "observation_ids": ["revenue-prior", "revenue-current"],
+                "source_span_ids": ["span-xlsx-C2", "span-xlsx-B2"],
+            }
+        ],
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_default_gemma_is_truthfully_not_configured_and_non_networking() -> None:
     provider = gemma()
     result = asyncio.run(provider.assist(assistant_request()))
@@ -97,6 +142,96 @@ def test_unofficial_or_unsupported_model_names_fail_closed(model: str) -> None:
 def test_transport_limits_fail_closed(timeout: float, retries: int) -> None:
     with pytest.raises(ValueError):
         GemmaProvider(None, "gemma-4-26b-a4b-it", timeout, retries)
+
+
+def test_transport_uses_fixed_host_rejects_redirects_and_caps_requests() -> None:
+    transport = GeminiHttpTransport("server-secret-sentinel")
+    assert ALLOWED_ENDPOINTS == {
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemma-4-26b-a4b-it:generateContent",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemma-4-31b-it:generateContent",
+    }
+    with pytest.raises(ValueError, match="allowlisted"):
+        transport._post("https://example.invalid/generateContent", {}, 5)
+    with pytest.raises(ValueError, match="request exceeded"):
+        transport._post(next(iter(ALLOWED_ENDPOINTS)), {"x": "z" * MAX_REQUEST_BYTES}, 5)
+    assert _NoRedirectHandler().redirect_request(None, None, 302, "", {}, "https://evil") is None
+
+
+def test_live_transport_keeps_key_in_header_and_out_of_payload(monkeypatch) -> None:
+    secret = "server-secret-sentinel"
+    recorded = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            del size
+            return json.dumps(wrapped({"ok": True})).encode()
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            recorded["request"] = request
+            recorded["timeout"] = timeout
+            return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda handler: FakeOpener())
+    transport = GeminiHttpTransport(secret)
+    response = asyncio.run(
+        transport.post_json(
+            url=next(iter(ALLOWED_ENDPOINTS)), payload={"safe": True}, timeout_seconds=5
+        )
+    )
+
+    request = recorded["request"]
+    assert request.get_header("X-goog-api-key") == secret
+    assert secret not in request.data.decode()
+    assert secret not in json.dumps(response)
+    assert secret not in repr(transport.__dict__)
+
+
+def test_live_transport_rejects_oversized_raw_response(monkeypatch) -> None:
+    class OversizedResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            assert size == MAX_RESPONSE_BYTES + 1
+            return b"x" * size
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            del request, timeout
+            return OversizedResponse()
+
+    monkeypatch.setattr(urllib.request, "build_opener", lambda handler: FakeOpener())
+    with pytest.raises(ValueError, match="response exceeded"):
+        GeminiHttpTransport("server-secret-sentinel")._post(
+            next(iter(ALLOWED_ENDPOINTS)), {"safe": True}, 5
+        )
+
+
+def test_retry_cap_and_nontransient_http_fail_closed() -> None:
+    retrying = FakeTransport(error=TimeoutError())
+    provider = GemmaProvider(None, "gemma-4-26b-a4b-it", 5, 2, transport=retrying)
+    result = asyncio.run(provider.assist(assistant_request()))
+    assert result.state == ProviderState.OFFLINE
+    assert len(retrying.calls) == 3
+
+    rejected = FakeTransport(
+        error=urllib.error.HTTPError("https://provider", 400, "private detail", None, None)
+    )
+    result = asyncio.run(gemma(transport=rejected).assist(assistant_request()))
+    assert result.state == ProviderState.ERROR
+    assert len(rejected.calls) == 1
+    assert "private detail" not in result.model_dump_json()
 
 
 def test_provider_sent_declaration_and_input_bounds_are_required() -> None:
@@ -199,6 +334,10 @@ def test_live_assistant_sends_only_bounded_request_and_accepts_cited_json() -> N
     sent = json.dumps(transport.calls[0]["payload"])
     assert "Revenue increased by 25%." in sent
     assert "GOOGLE_API_KEY" not in sent
+    generation = transport.calls[0]["payload"]["generationConfig"]
+    assert generation["responseMimeType"] == "application/json"
+    assert generation["responseJsonSchema"]["type"] == "object"
+    assert "pattern" not in json.dumps(generation["responseJsonSchema"])
 
 
 @pytest.mark.parametrize(
@@ -254,6 +393,108 @@ def test_live_extraction_accepts_only_cited_claims_from_supplied_spans() -> None
     assert result.claims == (claim,)
 
 
+def test_live_extraction_rejects_invented_source_citation() -> None:
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))["request"]
+    claim = AnalysisRequest.model_validate(payload).claims[0]
+    transport = FakeTransport(
+        wrapped(
+            {
+                "claims": [claim.model_dump(mode="json")],
+                "citations": [
+                    {
+                        "evidence_id": "invented",
+                        "source_span_id": "invented",
+                        "label": "Invented",
+                    }
+                ],
+            }
+        )
+    )
+    result = asyncio.run(gemma(transport=transport).extract_claims(extraction_request()))
+    assert result.state == ProviderState.ERROR
+    assert result.claims == () and result.citations == ()
+
+
+def test_live_chart_resolves_authoritative_values_and_citations() -> None:
+    transport = FakeTransport(wrapped(chart_payload()))
+    result = asyncio.run(gemma(transport=transport).propose_chart(chart_request()))
+
+    assert result.state == ProviderState.COMPLETED
+    assert result.chart is not None
+    assert result.chart.authoritative_values == "deterministic_backend"
+    assert [point.id for point in result.chart.series[0].points] == [
+        "revenue-prior",
+        "revenue-current",
+    ]
+    assert [str(point.value) for point in result.chart.series[0].points] == ["80", "100"]
+    assert {item.source_span_id for item in result.chart.citations} == {
+        "span-xlsx-B2",
+        "span-xlsx-C2",
+    }
+    sent = json.dumps(transport.calls[0]["payload"])
+    assert "Do not return numeric values, code, HTML, or expressions" in sent
+    assert "responseJsonSchema" in transport.calls[0]["payload"]["generationConfig"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        chart_payload(
+            series=[
+                {
+                    "label": "Revenue",
+                    "observation_ids": ["invented-id"],
+                    "source_span_ids": ["span-xlsx-B2"],
+                }
+            ]
+        ),
+        chart_payload(values=[1, 2]),
+        {},
+        chart_payload(
+            series=[
+                {
+                    "label": f"Series {index}",
+                    "observation_ids": ["revenue-current"],
+                    "source_span_ids": ["span-xlsx-B2"],
+                }
+                for index in range(5)
+            ]
+        ),
+    ],
+)
+def test_live_chart_rejects_invented_ids_values_malformed_and_excess_output(payload) -> None:
+    result = asyncio.run(
+        gemma(transport=FakeTransport(wrapped(payload))).propose_chart(chart_request())
+    )
+    assert result.state == ProviderState.ERROR
+    assert result.chart is None
+
+
+@pytest.mark.parametrize(
+    ("changes", "expected_detail"),
+    [
+        ({"unit": "shares", "currency": None}, "unit"),
+        ({"currency": "EUR"}, "currency"),
+        ({"entity_scope": "Different Issuer"}, "issuer"),
+        (
+            {"period": Period(start=date(2025, 1, 1), end=date(2025, 12, 31), duration_weeks=53)},
+            "period",
+        ),
+    ],
+)
+def test_live_chart_rejects_mixed_backend_dimensions(changes, expected_detail) -> None:
+    request = chart_request()
+    current, prior = request.observations
+    changed = current.model_copy(update=changes)
+    mixed_request = chart_request((changed, prior))
+    result = asyncio.run(
+        gemma(transport=FakeTransport(wrapped(chart_payload()))).propose_chart(mixed_request)
+    )
+    assert result.state == ProviderState.ERROR
+    assert result.chart is None
+    assert expected_detail not in result.model_dump_json()
+
+
 def test_connection_test_uses_no_document_content_and_redacts_failure() -> None:
     ready = FakeTransport(wrapped({"ok": True}))
     result = asyncio.run(gemma(transport=ready).test_connection())
@@ -274,13 +515,17 @@ def test_api_status_connection_and_default_answers_are_redacted() -> None:
         status = client.get("/api/v1/providers/model")
         connection = client.post("/api/v1/providers/model/test")
         answer = client.post("/api/v1/assistant", json=request)
+        chart = client.post("/api/v1/assistant/chart", json=chart_request().model_dump(mode="json"))
 
-    assert status.status_code == connection.status_code == answer.status_code == 200
+    assert {status.status_code, connection.status_code, answer.status_code, chart.status_code} == {
+        200
+    }
     assert status.json()["state"] == "not_configured"
     assert status.json()["document_content_sent"] is False
     assert connection.json()["reachable"] is False
     assert answer.json()["state"] == "not_configured"
-    serialized = status.text + connection.text + answer.text
+    assert chart.json()["state"] == "not_configured"
+    serialized = status.text + connection.text + answer.text + chart.text
     assert "GOOGLE_API_KEY" not in serialized
     assert "GEMINI_API_KEY" not in serialized
 
