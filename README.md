@@ -33,6 +33,12 @@ The temporary Source Library adds strict PDF/XLSX intake under private process-l
 single-process/single-worker only. It is not supported for confidential production input; see
 [ADR 0004](docs/architecture/0004-temporary-process-local-source-library.md).
 
+The same FastAPI process also exposes a tool-only, read-only MCP endpoint at `/mcp`. Its exact
+standard `search` and `fetch` tools cover only the public reviewed Apple and PCG demo corpus;
+they do not expose uploaded document bytes, secrets, private database state, or mutations. See
+[the MCP server guide](docs/mcp.md) for the contract, local verification, generic MCP setup, and
+ChatGPT Developer Mode steps.
+
 ## Intended demo flow
 
 1. Load one approved financial-report PDF and a related spreadsheet or clearly labeled derived fixture.
