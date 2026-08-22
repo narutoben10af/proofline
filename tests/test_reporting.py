@@ -16,6 +16,8 @@ from proofline.contracts import AnalysisRequest, AnalysisResponse, ReportSnapsho
 from proofline.economic_context import get_company_lens
 from proofline.report_contracts import (
     DATA_HANDLING_DISCLOSURE,
+    GENERIC_CONTEXT_COMPARABILITY,
+    GENERIC_CONTEXT_RELEVANCE,
     LIVE_SOURCE_DISCLOSURE,
     NO_CAUSATION,
     VERIFIED_CACHED_SOURCE_DISCLOSURE,
@@ -24,6 +26,7 @@ from proofline.report_contracts import (
     ResolvedEconomicContextPoint,
     canonical_json_bytes,
     canonical_sha256,
+    generic_company_id,
 )
 from proofline.reports import render_evidence_json, render_pdf
 from proofline.service import analyze
@@ -116,6 +119,22 @@ def _bundle(
         company="Example Group",
         analysis=response,
         snapshot=snapshot,
+        report_profile={
+            "reporting_period": {
+                "start": "2025-01-01",
+                "end": "2025-12-31",
+                "duration_weeks": 52,
+            },
+            "primary_observation_ids": (
+                "revenue-current",
+                "operating-profit",
+                "current-assets",
+                "operating-cash-flow",
+            ),
+            "secondary_metric_result_ids": tuple(
+                result.id for result in response.metric_results[:4]
+            ),
+        },
         trend=trend if trend is not None else _trend(),
         economic_context=(point,),
         source_mode=source_mode,
@@ -145,6 +164,52 @@ def _post_report(raw: dict):
     return TestClient(app).post("/api/v1/reports/pdf", json=raw)
 
 
+def _synthetic_issuer_bundle(company: str, currency: str) -> ReportRenderBundle:
+    raw = _bundle().model_dump(mode="json")
+    raw["company"] = company
+    raw["company_id"] = generic_company_id(company)
+    raw["snapshot"]["title"] = f"{company} reviewed evidence report"
+    raw["snapshot"]["economic_context_point_ids"] = ["context-synthetic-gdp"]
+    raw["economic_context"] = [
+        {
+            "id": "context-synthetic-gdp",
+            "company": company,
+            "indicator": "Real GDP annual growth",
+            "geography": "Reporting market",
+            "period": {"start": "2025-01-01", "end": "2025-12-31"},
+            "value": "2.4",
+            "display_value": "2.4%",
+            "unit": "percent year over year",
+            "official_source_url": "https://www.oecd.org/economy/",
+            "official_source_confirmed": True,
+            "published_on": "2026-01-31",
+            "retrieved_on": "2026-08-22",
+            "relevance": GENERIC_CONTEXT_RELEVANCE,
+            "comparability_warning": GENERIC_CONTEXT_COMPARABILITY,
+            "caveat": NO_CAUSATION,
+            "default_visible": True,
+        }
+    ]
+    for document in raw["analysis"]["documents"]:
+        document["issuer"] = company
+    for claim in raw["analysis"]["claims"]:
+        claim["entity"] = company
+        if claim["currency"] is not None:
+            claim["currency"] = currency
+    for observation in raw["analysis"]["observations"]:
+        observation["entity_scope"] = company
+        observation["currency"] = currency
+        observation["unit"] = f"{currency} millions"
+    raw["trend"]["company"] = company
+    raw["trend"]["currency"] = currency
+    raw["trend"]["unit"] = f"{currency} millions"
+    analysis = AnalysisResponse.model_validate(raw["analysis"])
+    digest = canonical_sha256(analysis)
+    raw["snapshot"]["evidence_chain_sha256"] = digest
+    raw["snapshot"]["analysis_id"] = f"sha256:{digest}"
+    return ReportRenderBundle.model_validate(raw)
+
+
 def test_pdf_is_byte_deterministic_and_sections_are_ordered() -> None:
     bundle = _bundle()
     first = render_pdf(bundle)
@@ -153,19 +218,70 @@ def test_pdf_is_byte_deterministic_and_sections_are_ordered() -> None:
 
     assert first == second
     headings = (
-        "1. Summary and hero finding",
-        "2. Historical trend and value table",
-        "3. Ordered findings",
-        "4. Economic context - no causation",
-        "5. Evidence and provenance appendix",
-        "6. Methodology and limitations",
-        "7. Data handling and export disclosure",
+        "1. Executive summary",
+        "2. Four primary financial metrics",
+        "3. Secondary ratios",
+        "4. Historical trend and value table",
+        "5. Exceptions and review risks",
+        "6. Narrative-versus-numbers findings",
+        "7. Economic context - no causation",
+        "8. Evidence and provenance appendix",
+        "9. Methodology and limitations",
+        "10. Data handling and export disclosure",
     )
     offsets = [text.index(heading) for heading in headings]
     assert offsets == sorted(offsets)
     assert "PROTOTYPE - HUMAN REVIEW REQUIRED" in text
     assert NO_CAUSATION in text
     assert DATA_HANDLING_DISCLOSURE in " ".join(text.split())
+
+
+@pytest.mark.parametrize(
+    ("company", "currency"),
+    (("Northstar Manufacturing plc", "GBP"), ("Sakura Components Co.", "JPY")),
+)
+def test_report_is_issuer_agnostic_across_synthetic_companies_and_currencies(
+    company: str, currency: str
+) -> None:
+    bundle = _synthetic_issuer_bundle(company, currency)
+    text = _text(render_pdf(bundle))
+
+    assert company in text
+    assert f"{currency} millions" in text
+    assert "Four primary financial metrics" in text
+    assert "Secondary ratios" in text
+    assert "Historical trend and value table" in text
+    assert "Real GDP annual growth" in text
+    assert "shareholder" not in text.lower()
+    assert "ownership" not in text.lower()
+
+
+def test_generic_report_explicitly_discloses_absent_reviewed_context() -> None:
+    raw = _synthetic_issuer_bundle("Contextless Holdings", "EUR").model_dump(mode="json")
+    raw["economic_context"] = []
+    raw["snapshot"]["economic_context_point_ids"] = []
+
+    text = _text(render_pdf(ReportRenderBundle.model_validate(raw)))
+
+    assert "No reviewed economic context was supplied" in text
+    assert NO_CAUSATION in text
+
+
+def test_report_fails_closed_on_currency_and_period_ambiguity() -> None:
+    currency = _bundle().model_dump(mode="json")
+    currency["analysis"]["observations"][2]["currency"] = "EUR"
+    _rehash_analysis(currency)
+    currency["snapshot"]["analysis_id"] = f"sha256:{currency['snapshot']['evidence_chain_sha256']}"
+    response = _post_report(currency)
+    assert response.status_code == 422
+    assert "one explicit currency" in response.text
+
+    period = _bundle().model_dump(mode="json")
+    period["report_profile"]["reporting_period"]["start"] = "2024-01-01"
+    period["report_profile"]["reporting_period"]["end"] = "2024-12-31"
+    response = _post_report(period)
+    assert response.status_code == 422
+    assert "periods must match" in response.text
 
 
 def test_cached_banner_and_disclosure_are_explicit() -> None:
@@ -375,7 +491,7 @@ def test_endpoint_rejects_cross_company_and_mixed_issuer_provenance() -> None:
     relabeled["trend"]["company"] = "Apple Inc."
     relabeled["trend"]["indicator"] = "Total net sales"
     for point in relabeled["trend"]["points"]:
-        point["reporting_basis"] = "Apple consolidated annual net sales"
+        point["reporting_basis"] = "Consolidated annual net sales"
     apple = get_company_lens("apple-fy2025")
     assert apple is not None
     relabeled["economic_context"] = [apple.economic_context[0].model_dump(mode="json")]
@@ -404,7 +520,7 @@ def test_endpoint_binds_company_id_and_claim_entity() -> None:
     company_id_mismatch["company_id"] = "apple-fy2025"
     response = _post_report(company_id_mismatch)
     assert response.status_code == 422
-    assert "registered company" in response.text
+    assert "company_id does not match" in response.text
 
     entity_mismatch = _bundle().model_dump(mode="json")
     entity_mismatch["analysis"]["claims"][0]["entity"] = "Other Issuer"
@@ -505,6 +621,30 @@ def test_reviewed_json_fallback_is_canonical_and_complete() -> None:
     parsed = json.loads(exported)
     assert parsed["analysis"]["claims"]
     assert parsed["snapshot"]["review_status"] == "reviewed"
+
+
+def test_report_profile_order_is_covered_by_bundle_and_content_hashes() -> None:
+    first = _bundle()
+    raw = first.model_dump(mode="json")
+    raw["report_profile"]["primary_observation_ids"] = list(
+        reversed(raw["report_profile"]["primary_observation_ids"])
+    )
+    second = ReportRenderBundle.model_validate(raw)
+
+    assert canonical_sha256(first) != canonical_sha256(second)
+    assert hashlib.sha256(render_pdf(first)).digest() != hashlib.sha256(render_pdf(second)).digest()
+
+
+def test_report_profile_cannot_introduce_a_forecast() -> None:
+    raw = _bundle().model_dump(mode="json")
+    raw["report_profile"]["forecast"] = {
+        "value": "110",
+        "method": "management estimate",
+    }
+
+    response = _post_report(raw)
+
+    assert response.status_code == 422
 
 
 def test_pdf_endpoint_headers_hash_filename_and_no_store() -> None:
