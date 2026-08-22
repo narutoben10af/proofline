@@ -2,7 +2,14 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from proofline.contracts import FactObservation, MetricResult, Period
+from proofline.contracts import (
+    CalculationInput,
+    FactObservation,
+    MetricCalculationPlan,
+    MetricResult,
+    Period,
+)
+from proofline.metrics import REGISTRY, calculate_metric
 from proofline.providers.contracts import (
     ChartPoint,
     ChartProposal,
@@ -119,15 +126,32 @@ def _observation_point(observation: FactObservation) -> _ResolvedPoint:
 
 
 def _metric_point(metric: MetricResult, observations: dict[str, FactObservation]) -> _ResolvedPoint:
-    if metric.result is None or metric.exceptional_state is not None:
+    definition = REGISTRY[metric.metric_id]
+    if metric.formula_id != definition.formula_id or len(metric.input_observation_ids) != len(
+        definition.required_roles
+    ):
+        raise ValueError("chart metric metadata does not match the deterministic registry")
+    plan = MetricCalculationPlan(
+        metric_id=metric.metric_id,
+        inputs=tuple(
+            CalculationInput(role=role, observation_id=observation_id)
+            for role, observation_id in zip(
+                definition.required_roles, metric.input_observation_ids, strict=True
+            )
+        ),
+    )
+    verified = calculate_metric(metric.id, plan, observations)
+    if verified != metric:
+        raise ValueError("chart metric result does not match deterministic recomputation")
+    if verified.result is None or verified.exceptional_state is not None:
         raise ValueError("chart metrics require a deterministic numeric result")
-    inputs = [_require(observations, item) for item in metric.input_observation_ids]
+    inputs = [_require(observations, item) for item in verified.input_observation_ids]
     _require_compatible(inputs)
     latest = max(inputs, key=lambda item: item.period.end)
     return _ResolvedPoint(
         id=metric.id,
         period=latest.period,
-        value=metric.result,
+        value=verified.result,
         entity_scope=latest.entity_scope,
         unit="ratio",
         currency=None,

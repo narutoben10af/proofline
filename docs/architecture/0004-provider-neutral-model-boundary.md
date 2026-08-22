@@ -21,7 +21,9 @@ Assistant visualization requests are data-only proposals. The allowlisted chart 
 line, bar, or comparison; proposals may contain stable observation/metric/source IDs and safe text,
 but never authoritative values or executable rendering content. The backend resolves Decimal
 values from normalized evidence, validates issuer/unit/currency/period compatibility, and returns a
-bounded cited chart specification. Source editing, upload, and deletion are outside this interface.
+bounded cited chart specification. Referenced metrics are recomputed against the fixed registry;
+supplied metric values are not trusted. Source editing, upload, and deletion are outside this
+interface.
 
 ## Consequences
 

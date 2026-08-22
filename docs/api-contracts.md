@@ -152,6 +152,7 @@ metric results. Gemma may propose only `line`, `bar`, or `comparison`, a safe ti
 stable evidence IDs, source-span IDs, and an exact period range. It cannot supply chart values,
 JavaScript, Vega expressions, HTML, source mutations, upload actions, or deletion actions. The
 backend resolves every point value from the supplied normalized observations or deterministic
-metric results, rejects unknown IDs and mixed issuer/unit/currency/period bases, caps output at four
-series and 24 total points, and returns Decimal strings with citations and
+metric results, recomputes any referenced metric against the v1 registry, rejects unknown IDs,
+forged results, and mixed issuer/unit/currency/period bases, caps output at four series and 24 total
+points, and returns Decimal strings with citations and
 `authoritative_values: deterministic_backend`.

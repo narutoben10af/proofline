@@ -3,6 +3,7 @@ import json
 import urllib.error
 import urllib.request
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -10,7 +11,15 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from proofline.api import app
-from proofline.contracts import AnalysisRequest, FactObservation, Period
+from proofline.contracts import (
+    AnalysisRequest,
+    CalculationInput,
+    FactObservation,
+    MetricCalculationPlan,
+    MetricId,
+    Period,
+)
+from proofline.metrics import calculate_metric
 from proofline.providers.contracts import (
     AssistantRequest,
     AssistantResult,
@@ -434,6 +443,45 @@ def test_live_chart_resolves_authoritative_values_and_citations() -> None:
     sent = json.dumps(transport.calls[0]["payload"])
     assert "Do not return numeric values, code, HTML, or expressions" in sent
     assert "responseJsonSchema" in transport.calls[0]["payload"]["generationConfig"]
+
+
+def test_live_chart_recomputes_and_rejects_forged_metric_value() -> None:
+    request = chart_request()
+    observations = {item.id: item for item in request.observations}
+    metric = calculate_metric(
+        "metric-revenue-growth",
+        MetricCalculationPlan(
+            metric_id=MetricId.REVENUE_GROWTH_YOY,
+            inputs=(
+                CalculationInput(role="revenue_current", observation_id="revenue-current"),
+                CalculationInput(role="revenue_prior", observation_id="revenue-prior"),
+            ),
+        ),
+        observations,
+    )
+    forged = metric.model_copy(update={"result": Decimal("999")})
+    forged_request = ChartRequest(
+        prompt="Chart revenue growth",
+        observations=request.observations,
+        metric_results=(forged,),
+        provider_sent=True,
+    )
+    proposal = chart_payload(
+        period_start="2025-01-01",
+        period_end="2025-12-31",
+        series=[
+            {
+                "label": "Revenue growth",
+                "metric_result_ids": ["metric-revenue-growth"],
+                "source_span_ids": ["span-xlsx-B2", "span-xlsx-C2"],
+            }
+        ],
+    )
+    result = asyncio.run(
+        gemma(transport=FakeTransport(wrapped(proposal))).propose_chart(forged_request)
+    )
+    assert result.state == ProviderState.ERROR
+    assert result.chart is None
 
 
 @pytest.mark.parametrize(

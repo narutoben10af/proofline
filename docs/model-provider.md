@@ -39,9 +39,10 @@ fallback are typed states.
 Chart requests use the same evidence-only boundary. The model can propose only a line, bar, or
 comparison chart by referencing backend-selected observation or deterministic metric IDs, their
 source-span IDs, and a period range. It cannot supply numeric chart values or executable rendering
-content. Proofline resolves values locally, rejects unknown or dimensionally mixed evidence, caps
-series and points, and emits a cited frontend-safe `ChartSpec`. The assistant has no source editing,
-upload, or deletion operation.
+content. Proofline resolves values locally, recomputes referenced metrics against the deterministic
+registry, rejects unknown, forged, or dimensionally mixed evidence, caps series and points, and
+emits a cited frontend-safe `ChartSpec`. The assistant has no source editing, upload, or deletion
+operation.
 
 `GET /api/v1/providers/model` and `POST /api/v1/providers/model/test` reveal no key or raw provider
 error. The connection test sends no document content. Live generation uses exact HTTPS endpoint
