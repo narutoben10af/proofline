@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, Protocol
@@ -10,9 +11,23 @@ from urllib.request import Request, urlopen
 from uuid import UUID
 
 from proofline.config import Settings
+from proofline.contracts import AnalysisResponse
 from proofline.source_library import ProcessSessionRepository, SessionRepository
 
 PERSISTENCE_BUCKET = "proofline-source-library"
+_MAGIC_ASSISTANT_SESSION_ID = re.compile(r"^src-[A-Za-z0-9_-]{32}$")
+_MAGIC_ASSISTANT_SOURCE_ID = re.compile(r"^file-[A-Za-z0-9_-]{24}$")
+_MAGIC_ASSISTANT_OBSERVATION_ID = re.compile(r"^fact:[0-9a-f]{20}$")
+_MAGIC_ASSISTANT_CONCEPTS = frozenset(
+    {
+        "revenue",
+        "operating_profit",
+        "current_assets",
+        "current_liabilities",
+        "operating_cash_flow",
+        "capex",
+    }
+)
 
 
 class PersistenceError(Exception):
@@ -250,6 +265,16 @@ def _json_single(result: HttpResult) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502)
+
+
+def _json_integer(result: HttpResult) -> int:
+    try:
+        value = json.loads(result.body or b"null")
+    except json.JSONDecodeError as error:
+        raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502) from error
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise PersistenceError("SUPABASE_RESPONSE_INVALID", 502)
+    return value
 
 
 class SupabaseAnalysisRepository:
@@ -495,6 +520,100 @@ class SupabaseServerMaintenanceRepository:
         if len(rows) != 1:
             raise PersistenceError("SUPABASE_DOCUMENT_NOT_CHECKING", 409)
         return rows[0]
+
+    def replace_magic_assistant_evidence(
+        self,
+        *,
+        analysis_session_id: UUID,
+        owner_id: UUID,
+        external_session_id: str,
+        analysis: AnalysisResponse,
+        document_ids_by_source_id: dict[str, UUID],
+    ) -> int:
+        """Atomically publish a numeric-free assistant index from a reviewed response.
+
+        The model-facing relation receives only stable identifiers and chart dimensions. Decimal
+        values, display values, source excerpts and model-authored prose remain outside this
+        payload; the UI resolves authoritative values from the same ``AnalysisResponse``.
+        """
+
+        if not _MAGIC_ASSISTANT_SESSION_ID.fullmatch(external_session_id):
+            raise PersistenceError("MAGIC_ASSISTANT_SESSION_ID_INVALID")
+
+        documents = {document.id: document for document in analysis.documents}
+        spans = {span.id: span for span in analysis.source_spans}
+        if len(documents) != len(analysis.documents) or len(spans) != len(analysis.source_spans):
+            raise PersistenceError("MAGIC_ASSISTANT_EVIDENCE_AMBIGUOUS")
+        issuers = {document.issuer for document in analysis.documents}
+        if len(issuers) != 1:
+            raise PersistenceError("MAGIC_ASSISTANT_ISSUER_MISMATCH")
+
+        rows: list[dict[str, Any]] = []
+        observation_ids: set[str] = set()
+        for observation in analysis.observations:
+            if observation.concept not in _MAGIC_ASSISTANT_CONCEPTS:
+                continue
+            if (
+                not _MAGIC_ASSISTANT_OBSERVATION_ID.fullmatch(observation.id)
+                or observation.id in observation_ids
+            ):
+                raise PersistenceError("MAGIC_ASSISTANT_OBSERVATION_ID_INVALID")
+            span = spans.get(observation.source_span_id)
+            if span is None:
+                raise PersistenceError("MAGIC_ASSISTANT_SOURCE_SPAN_UNKNOWN")
+            document = documents.get(span.document_version_id)
+            if document is None or span.source.document_id != document.id:
+                raise PersistenceError("MAGIC_ASSISTANT_DOCUMENT_UNKNOWN")
+            if not document.id.startswith(f"{external_session_id}:"):
+                raise PersistenceError("MAGIC_ASSISTANT_SESSION_MISMATCH")
+            source_url_prefix = "urn:proofline:session:"
+            if not document.source_url.startswith(source_url_prefix):
+                raise PersistenceError("MAGIC_ASSISTANT_SOURCE_ID_INVALID")
+            source_id = document.source_url.removeprefix(source_url_prefix)
+            if not _MAGIC_ASSISTANT_SOURCE_ID.fullmatch(source_id):
+                raise PersistenceError("MAGIC_ASSISTANT_SOURCE_ID_INVALID")
+            persisted_document_id = document_ids_by_source_id.get(source_id)
+            if not isinstance(persisted_document_id, UUID):
+                raise PersistenceError("MAGIC_ASSISTANT_DOCUMENT_MAPPING_REQUIRED")
+            rows.append(
+                {
+                    "document_id": persisted_document_id,
+                    "source_id": source_id,
+                    "observation_id": observation.id,
+                    "issuer": document.issuer,
+                    "concept": observation.concept,
+                    "period_start": (
+                        observation.period.start.isoformat()
+                        if observation.period.start is not None
+                        else None
+                    ),
+                    "period_end": observation.period.end.isoformat(),
+                    "duration_weeks": observation.period.duration_weeks,
+                    "unit": observation.unit,
+                    "currency": observation.currency,
+                }
+            )
+            observation_ids.add(observation.id)
+
+        if not rows:
+            raise PersistenceError("MAGIC_ASSISTANT_EVIDENCE_EMPTY")
+        if len(rows) > 24:
+            raise PersistenceError("MAGIC_ASSISTANT_EVIDENCE_LIMIT_EXCEEDED")
+
+        result = self.client.request(
+            "POST",
+            "/rest/v1/rpc/replace_magic_assistant_evidence",
+            payload={
+                "target_analysis_session_id": analysis_session_id,
+                "target_owner_id": owner_id,
+                "external_session_id": external_session_id,
+                "evidence_rows": rows,
+            },
+        )
+        replaced = _json_integer(result)
+        if replaced != len(rows):
+            raise PersistenceError("MAGIC_ASSISTANT_EVIDENCE_INCOMPLETE", 502)
+        return replaced
 
     def list_expired_sessions(self, *, now: datetime, limit: int = 100) -> list[dict[str, Any]]:
         if not 1 <= limit <= 500:

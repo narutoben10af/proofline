@@ -1,12 +1,21 @@
 import json
 from dataclasses import dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
 import pytest
 
 from proofline.config import Settings
+from proofline.contracts import (
+    AnalysisResponse,
+    DocumentVersion,
+    FactObservation,
+    Period,
+    SourceSpan,
+    SpreadsheetSourceRef,
+)
 from proofline.source_library import ProcessSessionRepository
 from proofline.supabase_persistence import (
     HttpResult,
@@ -27,6 +36,8 @@ OWNER_B = UUID("20000000-0000-4000-8000-000000000002")
 SESSION_A = UUID("11000000-0000-4000-8000-000000000001")
 SESSION_B = UUID("22000000-0000-4000-8000-000000000002")
 DOCUMENT_A = UUID("13000000-0000-4000-8000-000000000001")
+UPLOAD_SESSION = "src-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+UPLOAD_SOURCE = "file-bbbbbbbbbbbbbbbbbbbbbbbb"
 
 
 @dataclass
@@ -54,6 +65,67 @@ def configuration() -> SupabaseConfiguration:
 
 def user(owner: UUID = OWNER_A) -> SupabaseUserContext:
     return SupabaseUserContext(owner_id=owner, access_token="user.jwt.access-token")
+
+
+def assistant_analysis() -> AnalysisResponse:
+    document_id = f"{UPLOAD_SESSION}:workbook"
+    observations = []
+    spans = []
+    for index, (concept, value) in enumerate(
+        (("revenue", Decimal("120000000")), ("operating_profit", Decimal("24000000"))),
+        start=1,
+    ):
+        span_id = f"span:{concept}:2026"
+        spans.append(
+            SourceSpan(
+                id=span_id,
+                document_version_id=document_id,
+                source=SpreadsheetSourceRef(
+                    document_id=document_id,
+                    sheet="Financial statements",
+                    cell=f"B{index}",
+                    display_value=str(value),
+                ),
+            )
+        )
+        observations.append(
+            FactObservation(
+                id=f"fact:{index:020x}",
+                source_span_id=span_id,
+                concept=concept,
+                numeric_value=value,
+                display_value=f"MYR {value}",
+                unit="MYR base units",
+                currency="MYR",
+                period=Period(
+                    start=date(2026, 1, 1),
+                    end=date(2026, 12, 31),
+                    duration_weeks=52,
+                ),
+                entity_scope="Northstar Industrial plc consolidated",
+                restated=False,
+                sign_convention="positive",
+                fixture_status="derived",
+            )
+        )
+    return AnalysisResponse(
+        documents=(
+            DocumentVersion(
+                id=document_id,
+                sha256="a" * 64,
+                issuer="Northstar Industrial plc",
+                source_url=f"urn:proofline:session:{UPLOAD_SOURCE}",
+                retrieved_at=datetime(2026, 8, 22, tzinfo=UTC),
+                reporting_basis="Northstar Industrial plc consolidated",
+                version_label="FY2026",
+            ),
+        ),
+        source_spans=tuple(spans),
+        claims=(),
+        observations=tuple(observations),
+        metric_results=(),
+        findings=(),
+    )
 
 
 def test_process_local_is_the_default_and_supabase_is_never_auto_activated() -> None:
@@ -275,8 +347,60 @@ def test_server_maintenance_uses_secret_only_backend_header_and_bounds_receipts(
         maintenance.write_deletion_receipt(invalid_receipt)
 
 
+def test_server_writes_numeric_free_magic_assistant_index_from_reviewed_analysis() -> None:
+    transport = FakeTransport([HttpResult(200, b"2")])
+    maintenance = SupabaseServerMaintenanceRepository(
+        configuration(), "sb_secret_backend-test-placeholder", transport=transport
+    )
+
+    assert (
+        maintenance.replace_magic_assistant_evidence(
+            analysis_session_id=SESSION_A,
+            owner_id=OWNER_A,
+            external_session_id=UPLOAD_SESSION,
+            analysis=assistant_analysis(),
+            document_ids_by_source_id={UPLOAD_SOURCE: DOCUMENT_A},
+        )
+        == 2
+    )
+
+    method, url, headers, body = transport.calls[0]
+    assert method == "POST"
+    assert url.endswith("/rest/v1/rpc/replace_magic_assistant_evidence")
+    assert headers["apikey"].startswith("sb_secret_")
+    assert "Authorization" not in headers
+    payload = json.loads(body)
+    assert payload["target_analysis_session_id"] == str(SESSION_A)
+    assert payload["target_owner_id"] == str(OWNER_A)
+    assert payload["external_session_id"] == UPLOAD_SESSION
+    assert {row["concept"] for row in payload["evidence_rows"]} == {
+        "revenue",
+        "operating_profit",
+    }
+    serialized_rows = json.dumps(payload["evidence_rows"])
+    for forbidden in ("numeric_value", "display_value", "quote", "formula", "file_bytes"):
+        assert forbidden not in serialized_rows
+
+
+def test_magic_assistant_index_fails_closed_without_persisted_document_mapping() -> None:
+    maintenance = SupabaseServerMaintenanceRepository(
+        configuration(), "sb_secret_backend-test-placeholder", transport=FakeTransport()
+    )
+    with pytest.raises(PersistenceError, match="MAGIC_ASSISTANT_DOCUMENT_MAPPING_REQUIRED"):
+        maintenance.replace_magic_assistant_evidence(
+            analysis_session_id=SESSION_A,
+            owner_id=OWNER_A,
+            external_session_id=UPLOAD_SESSION,
+            analysis=assistant_analysis(),
+            document_ids_by_source_id={},
+        )
+
+
 def test_migration_makes_trust_fields_rpc_or_service_role_only() -> None:
-    migration = next((Path(__file__).parents[1] / "supabase/migrations").glob("*.sql"))
+    migration = (
+        Path(__file__).parents[1]
+        / "supabase/migrations/20260822054654_source_library_persistence.sql"
+    )
     sql = migration.read_text(encoding="utf-8").lower()
 
     for table in ("analysis_sessions", "documents", "source_spans", "analysis_snapshots"):
@@ -315,6 +439,30 @@ def test_migration_makes_trust_fields_rpc_or_service_role_only() -> None:
     assert "storage.objects for delete to authenticated" in sql
     assert "state = 'deleting'" in sql
     assert " owner =" not in sql
+
+
+def test_magic_assistant_migration_is_owner_read_only_and_numeric_free() -> None:
+    migration = (
+        Path(__file__).parents[1]
+        / "supabase/migrations/20260822072915_magic_assistant_evidence.sql"
+    )
+    sql = migration.read_text(encoding="utf-8").lower()
+
+    assert "create table public.magic_assistant_evidence" in sql
+    assert "alter table public.magic_assistant_evidence enable row level security" in sql
+    assert "alter table public.magic_assistant_evidence force row level security" in sql
+    assert "magic_assistant_evidence_select_active_own" in sql
+    assert "(select auth.uid()) = owner_id" in sql
+    assert "not coalesce(((select auth.jwt()) ->> 'is_anonymous')::boolean, false)" in sql
+    assert "grant select on public.magic_assistant_evidence to authenticated" in sql
+    assert "grant insert on public.magic_assistant_evidence to authenticated" not in sql
+    assert "create function public.replace_magic_assistant_evidence" in sql
+    assert "security definer" in sql
+    assert "set search_path = ''" in sql
+    assert "service_role_required" in sql
+    assert "ready_source_document_required" in sql
+    for forbidden_column in ("numeric_value", "display_value", "source_quote", "file_bytes"):
+        assert forbidden_column not in sql
 
 
 def test_sql_regression_covers_roles_spoofing_receipts_and_storage_crud() -> None:
