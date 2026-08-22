@@ -1,0 +1,328 @@
+{
+  "$defs": {
+    "ChartPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "period_end": {
+          "format": "date",
+          "title": "Period End",
+          "type": "string"
+        },
+        "period_start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period Start"
+        },
+        "source_span_ids": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "type": "string"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Source Span Ids",
+          "type": "array"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "id",
+        "period_end",
+        "value",
+        "source_span_ids"
+      ],
+      "title": "ChartPoint",
+      "type": "object"
+    },
+    "ChartSeries": {
+      "additionalProperties": false,
+      "properties": {
+        "currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z]{3}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Currency"
+        },
+        "entity_scope": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Entity Scope",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^<>{}]*$",
+          "title": "Label",
+          "type": "string"
+        },
+        "points": {
+          "items": {
+            "$ref": "#/$defs/ChartPoint"
+          },
+          "maxItems": 12,
+          "minItems": 1,
+          "title": "Points",
+          "type": "array"
+        },
+        "unit": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "entity_scope",
+        "unit",
+        "points"
+      ],
+      "title": "ChartSeries",
+      "type": "object"
+    },
+    "ChartSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "authoritative_values": {
+          "const": "deterministic_backend",
+          "default": "deterministic_backend",
+          "title": "Authoritative Values",
+          "type": "string"
+        },
+        "chart_type": {
+          "$ref": "#/$defs/ChartType"
+        },
+        "citations": {
+          "items": {
+            "$ref": "#/$defs/EvidenceCitation"
+          },
+          "maxItems": 48,
+          "minItems": 1,
+          "title": "Citations",
+          "type": "array"
+        },
+        "description": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^<>{}]*$",
+          "title": "Description",
+          "type": "string"
+        },
+        "period_end": {
+          "format": "date",
+          "title": "Period End",
+          "type": "string"
+        },
+        "period_start": {
+          "anyOf": [
+            {
+              "format": "date",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period Start"
+        },
+        "series": {
+          "items": {
+            "$ref": "#/$defs/ChartSeries"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Series",
+          "type": "array"
+        },
+        "title": {
+          "maxLength": 500,
+          "minLength": 1,
+          "pattern": "^[^<>{}]*$",
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "chart_type",
+        "title",
+        "description",
+        "period_end",
+        "series",
+        "citations"
+      ],
+      "title": "ChartSpec",
+      "type": "object"
+    },
+    "ChartType": {
+      "enum": [
+        "line",
+        "bar",
+        "comparison"
+      ],
+      "title": "ChartType",
+      "type": "string"
+    },
+    "EvidenceCitation": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 160,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "source_span_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Source Span Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "source_span_id",
+        "label"
+      ],
+      "title": "EvidenceCitation",
+      "type": "object"
+    },
+    "ProviderError": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "not_configured",
+            "offline",
+            "provider_error",
+            "unsupported_prompt"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 240,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ],
+      "title": "ProviderError",
+      "type": "object"
+    },
+    "ProviderState": {
+      "enum": [
+        "not_configured",
+        "loading",
+        "completed",
+        "offline",
+        "error",
+        "fallback"
+      ],
+      "title": "ProviderState",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "chart": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ChartSpec"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "disclosure": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Disclosure",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProviderError"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/ProviderState"
+    }
+  },
+  "required": [
+    "state",
+    "provider",
+    "model",
+    "disclosure"
+  ],
+  "title": "ChartResult",
+  "type": "object"
+}

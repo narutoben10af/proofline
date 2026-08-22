@@ -2,6 +2,7 @@ import tempfile
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,9 +13,11 @@ class Settings(BaseSettings):
     api_schema_version: str = "1.0.0"
     model_provider: str = "gemma"
     gemma_model: str = "gemma-4-26b-a4b-it"
-    gemini_api_key: str | None = None
-    gemini_request_timeout_seconds: float = 30.0
-    gemini_max_retries: int = 1
+    gemini_api_key: str | None = Field(
+        default=None, validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY")
+    )
+    gemini_request_timeout_seconds: float = Field(default=30.0, ge=1, le=60)
+    gemini_max_retries: int = Field(default=1, ge=0, le=2)
     source_library_root: Path = Path(tempfile.gettempdir()) / "proofline-source-library"
     source_library_idle_minutes: int = 30
     source_library_absolute_minutes: int = 120

@@ -15,6 +15,12 @@ made within v1 only when old consumers continue to validate.
   state. This first slice records intake metadata only; it does not accept document bytes.
 - `DELETE /api/v1/sessions/{id}` deletes process-local session metadata and returns a receipt whose
   narrow scope is explicit. It makes no deletion claim about source systems or bytes never stored.
+- `GET /api/v1/providers/model` exposes redacted readiness. `POST /api/v1/providers/model/test`
+  performs a no-document connection probe when configured. Neither reveals a credential or raw
+  upstream error.
+- `POST /api/v1/assistant`, `POST /api/v1/assistant/chart`, and `POST /api/v1/extractions` expose
+  bounded, provider-neutral contracts. The live adapter returns `not_configured`, `offline`,
+  `error`, or a locally validated cited result.
 - `GET /api/v1/company-lenses/{company_id}` returns one compact, fixture-backed historical series,
   up to four default economic context points, and separately disclosed additional context for an
   allowlisted reviewed company. Every point uses an official source and carries the exact sentence
@@ -159,3 +165,22 @@ explicit official-source confirmation, a public HTTPS URL, and fixed reviewed no
 
 Deletion applies only to application-managed session storage. It does not provide secure erasure,
 delete data held by providers, or remove PDF or JSON exports already downloaded by users.
+
+## Hosted model boundary
+
+See [Model-provider boundary](model-provider.md). Source-bearing requests require the literal
+`provider_sent: true`; it is a machine-auditable declaration, not an inferred consent claim.
+Assistant answers require citations, and every extracted claim must reference a cited source span.
+Unknown fields, oversized prompts/pages/outputs, unsupported models, and excessive timeout/retry
+configuration fail closed. The server transport has no filesystem or database access and receives
+only evidence explicitly included in the bounded request.
+
+The chart endpoint accepts a backend-selected set of normalized observations and deterministic
+metric results. Gemma may propose only `line`, `bar`, or `comparison`, a safe title/description,
+stable evidence IDs, source-span IDs, and an exact period range. It cannot supply chart values,
+JavaScript, Vega expressions, HTML, source mutations, upload actions, or deletion actions. The
+backend resolves every point value from the supplied normalized observations or deterministic
+metric results, recomputes any referenced metric against the v1 registry, rejects unknown IDs,
+forged results, and mixed issuer/unit/currency/period bases, caps output at four series and 24 total
+points, and returns Decimal strings with citations and
+`authoritative_values: deterministic_backend`.

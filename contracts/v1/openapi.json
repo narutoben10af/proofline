@@ -283,6 +283,99 @@
         "title": "AnalysisResponse",
         "type": "object"
       },
+      "AssistantRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceExcerpt"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider_sent": {
+            "const": true,
+            "title": "Provider Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "prompt",
+          "evidence",
+          "provider_sent"
+        ],
+        "title": "AssistantRequest",
+        "type": "object"
+      },
+      "AssistantResult": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EvidenceCitation"
+            },
+            "maxItems": 12,
+            "title": "Citations",
+            "type": "array"
+          },
+          "content": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content"
+          },
+          "disclosure": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProviderState"
+          }
+        },
+        "required": [
+          "state",
+          "provider",
+          "model",
+          "disclosure"
+        ],
+        "title": "AssistantResult",
+        "type": "object"
+      },
       "Body_upload_source_file_api_sessions__session_id__files_post": {
         "properties": {
           "file": {
@@ -325,6 +418,368 @@
           "observation_id"
         ],
         "title": "CalculationInput",
+        "type": "object"
+      },
+      "ChartPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "source_span_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Source Span Ids",
+            "type": "array"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "period_end",
+          "value",
+          "source_span_ids"
+        ],
+        "title": "ChartPoint",
+        "type": "object"
+      },
+      "ChartRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "metric_results": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/MetricResult-Input"
+            },
+            "maxItems": 12,
+            "title": "Metric Results",
+            "type": "array"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/FactObservation-Input"
+            },
+            "maxItems": 24,
+            "minItems": 1,
+            "title": "Observations",
+            "type": "array"
+          },
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt",
+            "type": "string"
+          },
+          "provider_sent": {
+            "const": true,
+            "title": "Provider Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "prompt",
+          "observations",
+          "provider_sent"
+        ],
+        "title": "ChartRequest",
+        "type": "object"
+      },
+      "ChartResult": {
+        "additionalProperties": false,
+        "properties": {
+          "chart": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChartSpec"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "disclosure": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProviderState"
+          }
+        },
+        "required": [
+          "state",
+          "provider",
+          "model",
+          "disclosure"
+        ],
+        "title": "ChartResult",
+        "type": "object"
+      },
+      "ChartSeries": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "entity_scope": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Entity Scope",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^<>{}]*$",
+            "title": "Label",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/ChartPoint"
+            },
+            "maxItems": 12,
+            "minItems": 1,
+            "title": "Points",
+            "type": "array"
+          },
+          "unit": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "entity_scope",
+          "unit",
+          "points"
+        ],
+        "title": "ChartSeries",
+        "type": "object"
+      },
+      "ChartSpec": {
+        "additionalProperties": false,
+        "properties": {
+          "authoritative_values": {
+            "const": "deterministic_backend",
+            "default": "deterministic_backend",
+            "title": "Authoritative Values",
+            "type": "string"
+          },
+          "chart_type": {
+            "$ref": "#/components/schemas/ChartType"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceCitation"
+            },
+            "maxItems": 48,
+            "minItems": 1,
+            "title": "Citations",
+            "type": "array"
+          },
+          "description": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^<>{}]*$",
+            "title": "Description",
+            "type": "string"
+          },
+          "period_end": {
+            "format": "date",
+            "title": "Period End",
+            "type": "string"
+          },
+          "period_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period Start"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/ChartSeries"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Series",
+            "type": "array"
+          },
+          "title": {
+            "maxLength": 500,
+            "minLength": 1,
+            "pattern": "^[^<>{}]*$",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chart_type",
+          "title",
+          "description",
+          "period_end",
+          "series",
+          "citations"
+        ],
+        "title": "ChartSpec",
+        "type": "object"
+      },
+      "ChartType": {
+        "enum": [
+          "line",
+          "bar",
+          "comparison"
+        ],
+        "title": "ChartType",
+        "type": "string"
+      },
+      "ClaimExtractionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/SourcePage"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Pages",
+            "type": "array"
+          },
+          "provider_sent": {
+            "const": true,
+            "title": "Provider Sent",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "pages",
+          "provider_sent"
+        ],
+        "title": "ClaimExtractionRequest",
+        "type": "object"
+      },
+      "ClaimExtractionResult": {
+        "additionalProperties": false,
+        "properties": {
+          "citations": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/EvidenceCitation"
+            },
+            "maxItems": 24,
+            "title": "Citations",
+            "type": "array"
+          },
+          "claims": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FinancialClaim-Output"
+            },
+            "maxItems": 24,
+            "title": "Claims",
+            "type": "array"
+          },
+          "disclosure": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProviderError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ProviderState"
+          }
+        },
+        "required": [
+          "state",
+          "provider",
+          "model",
+          "disclosure"
+        ],
+        "title": "ClaimExtractionResult",
         "type": "object"
       },
       "Classification": {
@@ -563,6 +1018,70 @@
           "version_label"
         ],
         "title": "DocumentVersion",
+        "type": "object"
+      },
+      "EvidenceCitation": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "source_span_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Source Span Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "source_span_id",
+          "label"
+        ],
+        "title": "EvidenceCitation",
+        "type": "object"
+      },
+      "EvidenceExcerpt": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "source_span_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Source Span Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "source_span_id",
+          "text"
+        ],
+        "title": "EvidenceExcerpt",
         "type": "object"
       },
       "ExceptionalState": {
@@ -1891,6 +2410,125 @@
         "title": "ProcessingError",
         "type": "object"
       },
+      "ProviderConnectionTest": {
+        "additionalProperties": false,
+        "properties": {
+          "disclosure": {
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "reachable": {
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "not_configured",
+              "ready",
+              "offline",
+              "error"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reachable",
+          "state",
+          "disclosure"
+        ],
+        "title": "ProviderConnectionTest",
+        "type": "object"
+      },
+      "ProviderError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "not_configured",
+              "offline",
+              "provider_error",
+              "unsupported_prompt"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "ProviderError",
+        "type": "object"
+      },
+      "ProviderState": {
+        "enum": [
+          "not_configured",
+          "loading",
+          "completed",
+          "offline",
+          "error",
+          "fallback"
+        ],
+        "title": "ProviderState",
+        "type": "string"
+      },
+      "ProviderStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "disclosure": {
+            "title": "Disclosure",
+            "type": "string"
+          },
+          "document_content_sent": {
+            "const": false,
+            "default": false,
+            "title": "Document Content Sent",
+            "type": "boolean"
+          },
+          "live_transport_enabled": {
+            "title": "Live Transport Enabled",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "not_configured",
+              "ready",
+              "fixture"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "provider",
+          "model",
+          "live_transport_enabled",
+          "disclosure"
+        ],
+        "title": "ProviderStatus",
+        "type": "object"
+      },
       "RemovalCount": {
         "additionalProperties": false,
         "properties": {
@@ -2602,6 +3240,37 @@
         ],
         "title": "SourceMode",
         "type": "string"
+      },
+      "SourcePage": {
+        "additionalProperties": false,
+        "properties": {
+          "page": {
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Page",
+            "type": "integer"
+          },
+          "source_span_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Source Span Id",
+            "type": "string"
+          },
+          "text": {
+            "maxLength": 8000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "page",
+          "source_span_id",
+          "text"
+        ],
+        "title": "SourcePage",
+        "type": "object"
       },
       "SourceSessionCreated": {
         "additionalProperties": false,
@@ -3388,6 +4057,88 @@
         ]
       }
     },
+    "/api/v1/assistant": {
+      "post": {
+        "operationId": "create_assistant_response_api_v1_assistant_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssistantResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Assistant Response",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/assistant/chart": {
+      "post": {
+        "operationId": "create_chart_response_api_v1_assistant_chart_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChartResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Chart Response",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
     "/api/v1/company-lenses/{company_id}": {
       "get": {
         "operationId": "company_lens_api_v1_company_lenses__company_id__get",
@@ -3427,6 +4178,89 @@
         "summary": "Company Lens",
         "tags": [
           "reporting"
+        ]
+      }
+    },
+    "/api/v1/extractions": {
+      "post": {
+        "operationId": "create_claim_extraction_api_v1_extractions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimExtractionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimExtractionResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Claim Extraction",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/model": {
+      "get": {
+        "operationId": "model_provider_status_api_v1_providers_model_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Model Provider Status",
+        "tags": [
+          "providers"
+        ]
+      }
+    },
+    "/api/v1/providers/model/test": {
+      "post": {
+        "operationId": "test_model_provider_connection_api_v1_providers_model_test_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConnectionTest"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Model Provider Connection",
+        "tags": [
+          "providers"
         ]
       }
     },

@@ -1,0 +1,58 @@
+{
+  "$defs": {
+    "SourcePage": {
+      "additionalProperties": false,
+      "properties": {
+        "page": {
+          "maximum": 500,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "source_span_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._:-]+$",
+          "title": "Source Span Id",
+          "type": "string"
+        },
+        "text": {
+          "maxLength": 8000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "page",
+        "source_span_id",
+        "text"
+      ],
+      "title": "SourcePage",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "pages": {
+      "items": {
+        "$ref": "#/$defs/SourcePage"
+      },
+      "maxItems": 8,
+      "minItems": 1,
+      "title": "Pages",
+      "type": "array"
+    },
+    "provider_sent": {
+      "const": true,
+      "title": "Provider Sent",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "pages",
+    "provider_sent"
+  ],
+  "title": "ClaimExtractionRequest",
+  "type": "object"
+}
