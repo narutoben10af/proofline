@@ -10,6 +10,7 @@ import { ReviewDesk, downloadReviewedReport } from "./ReviewDesk";
 import { createMagicFinAuthHandoff } from "./auth";
 import { adaptProductContract, buildDeterministicDemoPdf, getAssistantAdapter, getAssistantChartSpecs, getProviderConnectionAdapter, getReviewedReportBundle, metricDefinitionRegistry, productFixture, requestReviewedPdf } from "./product-contract";
 import { analyzeSourceSession, createSourceSession, uploadSource } from "./session-api";
+import { AssistantNotConfiguredError, buildAssistantEvidence, buildAssistantRequest, getModelProviderStatus, requestAssistant, resolveAssistantTransport, testModelProvider, toIdentifier } from "./provider-api";
 
 const TrendChart = lazy(() => import("./TrendChart"));
 
@@ -427,11 +428,20 @@ function ProfilePage() { return <div className="route-page"><PageHeader eyebrow=
 function SettingsPage({ reducedMotion, compactSources, onReducedMotion, onCompactSources, initialProviderMode = "not_configured" }) {
   const [providerMode, setProviderMode] = useState(initialProviderMode);
   const provider = getProviderConnectionAdapter(providerMode);
+  const [providerDetail, setProviderDetail] = useState(null);
   const testConnection = () => {
     setProviderMode("loading");
-    window.setTimeout(() => setProviderMode(initialProviderMode), 300);
+    testModelProvider({})
+      .then((result) => {
+        setProviderDetail(result.disclosure || null);
+        setProviderMode(result.reachable ? "success" : result.state === "not_configured" ? "not_configured" : "error");
+      })
+      .catch((error) => {
+        setProviderDetail(error.message);
+        setProviderMode("error");
+      });
   };
-  return <div className="route-page"><PageHeader eyebrow="Settings" title="Make the desk comfortable." description="Display preferences affect this browser session only. Provider credentials remain server-side." /><section className="settings-list"><label><span><strong>Reduce interface motion</strong><small>Minimize panel, progress, and route transitions. Your system preference is respected by default.</small></span><input aria-label="Reduce interface motion" type="checkbox" checked={reducedMotion} onChange={(event) => onReducedMotion(event.target.checked)} /></label><label><span><strong>Compact source cards</strong><small>Use a tighter reading density on large screens.</small></span><input aria-label="Compact source cards" type="checkbox" checked={compactSources} onChange={(event) => onCompactSources(event.target.checked)} /></label></section><section className="provider-settings" aria-labelledby="provider-settings-title"><div className="section-heading"><div><p className="eyebrow">Magic Assistant</p><h2 id="provider-settings-title">Provider connection</h2></div><StatusTag tone={provider.tone}>{provider.status}</StatusTag></div><dl><div><dt>Provider</dt><dd>Google</dd></div><div><dt>Model</dt><dd><code>gemma-4-26b-a4b-it</code></dd></div><div><dt>Last successful test</dt><dd>{provider.lastSuccessfulTest}</dd></div></dl><div className="provider-status" role={providerMode === "error" ? "alert" : "status"} aria-live="polite" aria-busy={providerMode === "loading"}><p>{provider.description}</p><button className="button secondary" type="button" onClick={testConnection} disabled={providerMode === "loading"}>{providerMode === "loading" ? "Testing connection…" : providerMode === "error" ? "Retry connection" : "Test connection"}</button></div><div className="fixture-note wide"><LockKey size={17} /><p><strong>No browser API key</strong>The deployment owner sets the key server-side. This frontend calls only MagicFin’s authenticated, provider-neutral endpoint and never stores a key in the client bundle, local storage, or logs.</p></div></section><div className="fixture-note wide"><Info size={17} /><p><strong>Session-only preference</strong>These working display settings are not saved after reload.</p></div></div>;
+  return <div className="route-page"><PageHeader eyebrow="Settings" title="Make the desk comfortable." description="Display preferences affect this browser session only. Provider credentials remain server-side." /><section className="settings-list"><label><span><strong>Reduce interface motion</strong><small>Minimize panel, progress, and route transitions. Your system preference is respected by default.</small></span><input aria-label="Reduce interface motion" type="checkbox" checked={reducedMotion} onChange={(event) => onReducedMotion(event.target.checked)} /></label><label><span><strong>Compact source cards</strong><small>Use a tighter reading density on large screens.</small></span><input aria-label="Compact source cards" type="checkbox" checked={compactSources} onChange={(event) => onCompactSources(event.target.checked)} /></label></section><section className="provider-settings" aria-labelledby="provider-settings-title"><div className="section-heading"><div><p className="eyebrow">Magic Assistant</p><h2 id="provider-settings-title">Provider connection</h2></div><StatusTag tone={provider.tone}>{provider.status}</StatusTag></div><dl><div><dt>Provider</dt><dd>Google</dd></div><div><dt>Model</dt><dd><code>gemma-4-26b-a4b-it</code></dd></div><div><dt>Last successful test</dt><dd>{provider.lastSuccessfulTest}</dd></div></dl><div className="provider-status" role={providerMode === "error" ? "alert" : "status"} aria-live="polite" aria-busy={providerMode === "loading"}><p>{providerDetail || provider.description}</p><button className="button secondary" type="button" onClick={testConnection} disabled={providerMode === "loading"}>{providerMode === "loading" ? "Testing connection…" : providerMode === "error" ? "Retry connection" : "Test connection"}</button></div><div className="fixture-note wide"><LockKey size={17} /><p><strong>No browser API key</strong>The deployment owner sets the key server-side. This frontend calls only MagicFin’s authenticated, provider-neutral endpoint and never stores a key in the client bundle, local storage, or logs.</p></div></section><div className="fixture-note wide"><Info size={17} /><p><strong>Session-only preference</strong>These working display settings are not saved after reload.</p></div></div>;
 }
 
 const authMessages = {
@@ -509,21 +519,74 @@ function AssistantChart({ data, onOpenCitation }) {
   return focused ? <div className="focused-chart-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFocused(false); }}>{card}</div> : card;
 }
 
-function AssistantPanel({ open, onClose, onOpenCitation, returnRef, data, initialMode = "verified_demo", sourceOpen = false }) {
+const LIVE_STATE_LABELS = { not_configured: "Provider not configured", offline: "Provider offline", error: "Assistant error", loading: "Working…" };
+
+function resolveLiveCitation(citation, data) {
+  const fixtureCitation = data?.assistant?.citations?.find((item) => toIdentifier(item.id, "") === citation.evidence_id);
+  if (fixtureCitation) return fixtureCitation;
+  const source = data?.sources?.find((item) => toIdentifier(item.id, "") === citation.evidence_id);
+  if (source) return source;
+  return { id: citation.evidence_id, label: citation.label, anchor: citation.source_span_id, provenance: "Live provider citation", route: `/files#${citation.evidence_id}` };
+}
+
+function LiveTurn({ turn, data, onOpenCitation }) {
+  if (turn.pending) return <div className="assistant-message" aria-live="polite" aria-busy="true"><div className="answer-block"><span className="loader" aria-hidden="true" /><p>Asking the configured provider…</p></div></div>;
+  if (turn.error) return <div className="assistant-message"><div className="answer-block" role="alert"><span>Assistant unavailable</span><p>{turn.error}</p></div></div>;
+  const result = turn.result || {};
+  const answered = result.state === "completed" || result.state === "fallback";
+  if (!answered) return <div className="assistant-message"><div className="answer-block" role="status"><span>{LIVE_STATE_LABELS[result.state] || "Assistant unavailable"}</span><p>{result.error?.message || result.disclosure || "The assistant could not answer this question."}</p></div></div>;
+  return <div className="assistant-message" aria-live="polite"><div className="answer-block"><span>Assistant analysis</span><p>{result.content}</p></div>{Boolean(result.citations?.length) && <div className="assistant-source-pills" aria-label="Response sources">{result.citations.map((citation) => <button key={`${turn.id}-${citation.evidence_id}-${citation.source_span_id}`} type="button" onClick={(event) => onOpenCitation(resolveLiveCitation(citation, data), event.currentTarget)}><Files size={13} />{citation.label}</button>)}</div>}<small className="assistant-disclosure">{result.disclosure}</small></div>;
+}
+
+function AssistantPanel({ open, onClose, onOpenCitation, returnRef, data, initialMode = "verified_demo", sourceOpen = false, getAccessToken }) {
   const panelRef = useRef(null);
   const conversationRef = useRef(null);
   const [mode, setMode] = useState(initialMode);
   const [suggestionId, setSuggestionId] = useState("growth");
+  const [draft, setDraft] = useState("");
+  const [turns, setTurns] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [providerStatus, setProviderStatus] = useState(null);
   const response = useMemo(() => getAssistantAdapter(mode, data), [mode, data]);
   const selectedSuggestion = response.suggestions?.find((item) => item.id === suggestionId);
   const answer = selectedSuggestion ? { ...response, ...selectedSuggestion } : response;
+  const evidence = useMemo(() => buildAssistantEvidence(data), [data]);
+  const transport = useMemo(() => resolveAssistantTransport(), []);
+  const transportReady = transport.mode !== "unconfigured";
+  const composerReady = evidence.length > 0 && transportReady;
+  const canSend = composerReady && draft.trim().length > 0 && !sending;
   useDismissible(open, onClose, returnRef, panelRef);
+  useEffect(() => {
+    if (!open) return undefined;
+    if (!transportReady) { setProviderStatus({ state: "not_configured" }); return undefined; }
+    let cancelled = false;
+    getModelProviderStatus({ transport }).then((status) => { if (!cancelled) setProviderStatus(status); }).catch((error) => { if (!cancelled) setProviderStatus({ state: error instanceof AssistantNotConfiguredError ? "not_configured" : "offline" }); });
+    return () => { cancelled = true; };
+  }, [open, transport, transportReady]);
   useEffect(() => {
     if (!open || !conversationRef.current) return;
     conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
-  }, [open, suggestionId, mode]);
+  }, [open, suggestionId, mode, turns]);
+  const sendQuestion = async () => {
+    const prompt = draft.trim();
+    if (!prompt || sending || !composerReady) return;
+    const id = `turn-${turns.length + 1}`;
+    setSending(true);
+    setDraft("");
+    setTurns((current) => [...current, { id, prompt, pending: true }]);
+    try {
+      const result = await requestAssistant(buildAssistantRequest(prompt, data), { transport, getAccessToken });
+      setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, pending: false, result } : turn)));
+    } catch (error) {
+      setTurns((current) => current.map((turn) => (turn.id === id ? { ...turn, pending: false, error: error.message } : turn)));
+    } finally {
+      setSending(false);
+    }
+  };
   if (!open) return null;
-  return <aside ref={panelRef} className="assistant-panel" role="dialog" aria-modal={sourceOpen ? undefined : "true"} aria-hidden={sourceOpen ? "true" : undefined} inert={sourceOpen} aria-labelledby="assistant-title" tabIndex="-1"><div className="panel-title"><div><p className="eyebrow">Magic Assistant</p><h2 id="assistant-title">Ask the fixture, inspect the evidence.</h2></div><button type="button" onClick={onClose} aria-label="Close Magic Assistant"><X size={20} /></button></div><StatusTag tone={mode === "verified_demo" ? "success" : mode === "error" || mode === "offline" ? "warning" : "neutral"}>{response.notice}</StatusTag>{mode === "verified_demo" ? <div ref={conversationRef} className="assistant-conversation"><section className="suggested-questions" aria-labelledby="suggested-title"><h3 id="suggested-title">Try a verified demo question</h3>{response.suggestions.map((item) => <button key={item.id} type="button" aria-pressed={suggestionId === item.id} onClick={() => setSuggestionId(item.id)}>{item.label}</button>)}</section><div className="user-message"><span>Selected question</span><p>{answer.label || answer.prompt}</p></div><div className="assistant-message" aria-live="polite"><div className="answer-block calculated"><span>Calculated result</span><strong>{answer.calculated}</strong><small>{answer.formula}</small></div><div className="answer-block"><span>Assistant analysis</span><p>{answer.analysis}</p></div><div className="assistant-source-pills" aria-label="Response sources">{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={13} />{citation.label}</button>)}</div><AssistantChart data={data} onOpenCitation={onOpenCitation} /><div className="assistant-citations"><div><span>Cited sources</span><small>{response.citations.length} linked anchors</small></div>{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={17} /><span><strong>{citation.label}</strong><small>{citation.detail}</small></span><CaretRight size={15} /></button>)}</div></div></div> : <section className="assistant-state" role={mode === "error" ? "alert" : "status"} aria-busy={mode === "loading"}>{mode === "loading" ? <span className="loader" aria-hidden="true" /> : <Warning size={28} />}<h3>{response.notice}</h3><p>{response.analysis}</p>{mode === "error" && <button className="button secondary" type="button" onClick={() => setMode("verified_demo")}>Retry fixture demo</button>}</section>}<div className="assistant-composer unavailable"><strong>Free-form questions unavailable</strong><p>Connect a server-side model provider to enable typed questions. No browser API key is used.</p><div><textarea id="assistant-input" aria-label="Free-form questions unavailable" rows="2" placeholder="Provider not configured" disabled onInput={(event) => { event.currentTarget.style.height = "auto"; event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`; }} /><button type="button" disabled aria-label="Send message unavailable"><PaperPlaneTilt size={18} /></button></div><small>Preview provider boundary states:</small><div className="state-switcher" aria-label="Assistant demo states">{["verified_demo", "not_configured", "offline", "loading", "error"].map((item) => <button type="button" key={item} aria-pressed={mode === item} onClick={() => setMode(item)}>{item.replaceAll("_", " ")}</button>)}</div></div></aside>;
+  const liveTone = providerStatus?.state === "ready" ? "success" : providerStatus?.state === "offline" ? "warning" : "neutral";
+  const liveLabel = providerStatus?.state === "ready" ? `Live provider ready · ${providerStatus.model}` : providerStatus ? LIVE_STATE_LABELS[providerStatus.state] || "Provider unavailable" : "Checking provider…";
+  return <aside ref={panelRef} className="assistant-panel" role="dialog" aria-modal={sourceOpen ? undefined : "true"} aria-hidden={sourceOpen ? "true" : undefined} inert={sourceOpen} aria-labelledby="assistant-title" tabIndex="-1"><div className="panel-title"><div><p className="eyebrow">Magic Assistant</p><h2 id="assistant-title">Ask the fixture, inspect the evidence.</h2></div><button type="button" onClick={onClose} aria-label="Close Magic Assistant"><X size={20} /></button></div><StatusTag tone={mode === "verified_demo" ? "success" : mode === "error" || mode === "offline" ? "warning" : "neutral"}>{response.notice}</StatusTag><StatusTag tone={liveTone}>{liveLabel}</StatusTag>{mode === "verified_demo" ? <div ref={conversationRef} className="assistant-conversation"><section className="suggested-questions" aria-labelledby="suggested-title"><h3 id="suggested-title">Try a verified demo question</h3>{response.suggestions.map((item) => <button key={item.id} type="button" aria-pressed={suggestionId === item.id} onClick={() => setSuggestionId(item.id)}>{item.label}</button>)}</section><div className="user-message"><span>Selected question</span><p>{answer.label || answer.prompt}</p></div><div className="assistant-message" aria-live="polite"><div className="answer-block calculated"><span>Calculated result</span><strong>{answer.calculated}</strong><small>{answer.formula}</small></div><div className="answer-block"><span>Assistant analysis</span><p>{answer.analysis}</p></div><div className="assistant-source-pills" aria-label="Response sources">{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={13} />{citation.label}</button>)}</div><AssistantChart data={data} onOpenCitation={onOpenCitation} /><div className="assistant-citations"><div><span>Cited sources</span><small>{response.citations.length} linked anchors</small></div>{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={17} /><span><strong>{citation.label}</strong><small>{citation.detail}</small></span><CaretRight size={15} /></button>)}</div></div>{turns.map((turn) => <div key={turn.id} className="assistant-turn"><div className="user-message"><span>Your question</span><p>{turn.prompt}</p></div><LiveTurn turn={turn} data={data} onOpenCitation={onOpenCitation} /></div>)}</div> : <section className="assistant-state" role={mode === "error" ? "alert" : "status"} aria-busy={mode === "loading"}>{mode === "loading" ? <span className="loader" aria-hidden="true" /> : <Warning size={28} />}<h3>{response.notice}</h3><p>{response.analysis}</p>{mode === "error" && <button className="button secondary" type="button" onClick={() => setMode("verified_demo")}>Retry fixture demo</button>}</section>}<div className={`assistant-composer ${composerReady ? "" : "unavailable"}`}>{composerReady ? <p>Questions are answered only from the cited evidence on this session. No browser API key is used.</p> : <><strong>Free-form questions unavailable</strong><p>{transportReady ? "No cited evidence is loaded for this session, so a grounded question cannot be sent." : "This deployment has no assistant endpoint configured, so typed questions are unavailable here."}</p></>}<div><textarea id="assistant-input" aria-label={composerReady ? "Ask a question about the cited evidence" : "Free-form questions unavailable"} rows="2" placeholder={composerReady ? "Ask about the cited evidence…" : "No cited evidence loaded"} disabled={!composerReady || sending} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendQuestion(); } }} onInput={(event) => { event.currentTarget.style.height = "auto"; event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`; }} /><button type="button" disabled={!canSend} onClick={sendQuestion} aria-label={sending ? "Sending message" : "Send message"}><PaperPlaneTilt size={18} /></button></div><small>Preview provider boundary states:</small><div className="state-switcher" aria-label="Assistant demo states">{["verified_demo", "not_configured", "offline", "loading", "error"].map((item) => <button type="button" key={item} aria-pressed={mode === item} onClick={() => setMode(item)}>{item.replaceAll("_", " ")}</button>)}</div></div></aside>;
 }
 
 function DeletedSessionState({ onRestore }) {

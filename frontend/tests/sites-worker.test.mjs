@@ -66,3 +66,34 @@ test("emits the files required by Sites packaging", async () => {
   await access(new URL("../dist/server/index.js", import.meta.url));
   await access(new URL("../dist/.openai/hosting.json", import.meta.url));
 });
+
+test("never answers an assistant API request with the app shell", async () => {
+  // The Sites worker serves static assets only. If a same-origin assistant call ever resolved to
+  // index.html, the client would parse markup as JSON and report a bogus assistant failure.
+  for (const request of [
+    new Request("https://example.test/api/v1/assistant", {
+      method: "POST",
+      headers: { accept: "text/html", "content-type": "application/json" },
+      body: JSON.stringify({ prompt: "hi" }),
+    }),
+    new Request("https://example.test/api/v1/providers/model", { headers: { accept: "text/html" } }),
+  ]) {
+    const served = [];
+    const response = await worker.fetch(request, {
+      ASSETS: {
+        fetch: async (assetRequest) => {
+          const url = new URL(assetRequest.url);
+          served.push(url.pathname);
+          return new Response(url.pathname === "/index.html" ? "<!doctype html><div id=root>" : "missing", {
+            status: url.pathname === "/index.html" ? 200 : 404,
+            headers: { "content-type": url.pathname === "/index.html" ? "text/html" : "text/plain" },
+          });
+        },
+      },
+    });
+
+    assert.equal(response.status, 404, `${request.method} ${new URL(request.url).pathname} must not be rewritten`);
+    assert.ok(!served.includes("/index.html"), "assistant routes must never fall back to the app shell");
+    assert.ok(!(await response.text()).includes("<!doctype html"), "assistant routes must not return HTML");
+  }
+});
