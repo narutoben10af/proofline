@@ -30,6 +30,14 @@ export const productFixture = {
     description: "Industrial systems and service operations",
     currency: "USD millions",
   },
+  // This context is intentionally limited to the seeded, synthetic demo evidence.
+  // AssistantPanel still requires an authenticated Supabase session before it can
+  // submit anything; uploaded files do not inherit this context.
+  assistantContext: {
+    mode: "verified_demo",
+    sessionId: "src-4d6167696346696e44656d6f32303235",
+    sourceIds: ["file-4d6167696346696e44656d6f"],
+  },
   sources: [
     { id: "annual-report", name: "Annual_Report_2025.pdf", kind: "PDF", date: "FY2025 · uploaded 22 Aug", status: "Validated", provenance: "Public demo fixture", anchor: "Page 14", reviewRoute: "/review#annual-report" },
     { id: "financials", name: "Financials_FY2025.xlsx", kind: "Workbook", date: "FY2024–FY2025", status: "Validated", provenance: "Human-verified cells", anchor: "Income Statement B5:C5", reviewRoute: "/review#financials" },
