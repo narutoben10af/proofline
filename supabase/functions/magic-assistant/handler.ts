@@ -1,4 +1,4 @@
-import { parseRequest } from "./contracts.ts";
+import { parseRequest, VERIFIED_DEMO_SESSION_ID } from "./contracts.ts";
 import type { ChartProposal, MagicAssistantRequest, NormalizedEvidence } from "./contracts.ts";
 import {
   AuthenticationError,
@@ -153,6 +153,9 @@ export function createHandler(dependencies: HandlerDependencies) {
       return jsonResponse(
         {
           state: "completed",
+          data_mode: parsed.session_id === VERIFIED_DEMO_SESSION_ID
+            ? "verified_demo"
+            : "live_evidence",
           proposal,
           authoritative_values: "frontend_resolves_from_rls_evidence",
           disclosure: SENT_DISCLOSURE,

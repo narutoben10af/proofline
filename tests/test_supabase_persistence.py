@@ -492,3 +492,28 @@ def test_sql_regression_covers_roles_spoofing_receipts_and_storage_crud() -> Non
     ):
         assert marker in sql
     assert sql.rstrip().endswith("rollback;")
+
+
+def test_magic_assistant_demo_bootstrap_is_owner_scoped_explicit_and_numeric_free() -> None:
+    migration = (
+        Path(__file__).parents[1]
+        / "supabase/migrations/20260822075800_magic_assistant_demo_bootstrap.sql"
+    )
+    sql = migration.read_text(encoding="utf-8").lower()
+
+    assert "create function public.bootstrap_magic_assistant_demo()" in sql
+    assert "security definer" in sql
+    assert "set search_path = ''" in sql
+    assert "authenticated_user_required" in sql
+    assert (
+        "grant execute on function public.bootstrap_magic_assistant_demo() to authenticated" in sql
+    )
+    assert "from public, anon" in sql
+    assert "'mode', 'verified_demo'" in sql
+    assert "'sessionid', demo_session_id" in sql
+    assert "'sourceids', jsonb_build_array(demo_source_id)" in sql
+    assert "synthetic public demo metadata; no file was uploaded or stored" in sql
+    assert "document_id drop not null" in sql
+    assert "is_demo and document_id is null" in sql
+    for forbidden in ("numeric_value", "display_value", "source_quote", "file_bytes"):
+        assert forbidden not in sql

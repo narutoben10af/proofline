@@ -4,6 +4,8 @@ import {
   parseAndResolveProposal,
   parseEvidenceRows,
   parseRequest,
+  VERIFIED_DEMO_SESSION_ID,
+  VERIFIED_DEMO_SOURCE_ID,
 } from "./contracts.ts";
 import {
   AuthenticationError,
@@ -379,6 +381,49 @@ Deno.test("handler requires auth, reports not-configured honestly, and returns c
   const payload = await response.json();
   assertEquals(response.status, 200);
   assertEquals(payload.authoritative_values, "frontend_resolves_from_rls_evidence");
+  assertEquals(payload.data_mode, "live_evidence");
   assertEquals(payload.proposal.source_ids, [SOURCE_A, SOURCE_B]);
   assert(!JSON.stringify(payload).includes('"values"'));
+});
+
+Deno.test("handler labels the stable owner-scoped bootstrap context as verified demo", async () => {
+  const demoRequest = {
+    ...requestPayload(),
+    session_id: VERIFIED_DEMO_SESSION_ID,
+    source_ids: [VERIFIED_DEMO_SOURCE_ID],
+  };
+  const demoEvidence = evidenceRows().slice(0, 1).map((row) => ({
+    ...row,
+    session_id: VERIFIED_DEMO_SESSION_ID,
+    source_id: VERIFIED_DEMO_SOURCE_ID,
+  }));
+  const handler = createHandler({
+    env: { GEMINI_API_KEY: "secret", GEMMA_MODEL: "gemma-4-26b-a4b-it" },
+    authenticate: () => Promise.resolve({ token: TOKEN, userId: USER }),
+    loadEvidence: () => Promise.resolve(demoEvidence),
+    propose: () =>
+      Promise.resolve(
+        parseAndResolveProposal({
+          ...chartPayload(),
+          period_start: "2024-01-01",
+          period_end: "2024-12-31",
+          series: [{
+            observation_ids: [demoEvidence[0].observation_id],
+            source_ids: [VERIFIED_DEMO_SOURCE_ID],
+          }],
+          source_ids: [VERIFIED_DEMO_SOURCE_ID],
+        }, demoEvidence),
+      ),
+  });
+  const response = await handler(
+    new Request("https://function.example/magic-assistant", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${TOKEN}` },
+      body: JSON.stringify(demoRequest),
+    }),
+  );
+  const payload = await response.json();
+  assertEquals(response.status, 200);
+  assertEquals(payload.data_mode, "verified_demo");
+  assert(!JSON.stringify(payload).includes("numeric_value"));
 });
