@@ -57,12 +57,18 @@ class NormalizationResult(FrozenModel):
 
 
 _CONCEPT_ALIASES = {
-    "revenue": {"revenue", "net sales", "sales revenue", "turnover"},
-    "operating_profit": {"operating profit", "operating income"},
+    "revenue": {"revenue", "net sales", "sales revenue", "turnover", "operating revenue"},
+    "operating_profit": {
+        "operating profit",
+        "operating income",
+        "operating profit loss",
+        "operating loss profit",
+    },
     "current_assets": {"current assets", "total current assets"},
     "current_liabilities": {"current liabilities", "total current liabilities"},
     "operating_cash_flow": {
         "net cash from operating activities",
+        "net cash generated from operating activities",
         "net cash provided by operating activities",
         "operating cash flow",
     },
@@ -393,6 +399,14 @@ def _find_candidates(cells: tuple[_Cell, ...]) -> tuple[_Candidate, ...]:
     for cell in cells:
         by_sheet_row[(cell.sheet, cell.row)].append(cell)
         by_sheet_column[(cell.sheet, cell.column)].append(cell)
+    concept_rows = {
+        (cell.sheet, cell.row) for cell in cells if _normalize_label(cell.text) in _ALIAS_TO_CONCEPT
+    }
+    concept_columns = {
+        (cell.sheet, cell.column)
+        for cell in cells
+        if _normalize_label(cell.text) in _ALIAS_TO_CONCEPT
+    }
     output: dict[tuple[str, str, date], _Candidate] = {}
     for value_cell in cells:
         value = _parse_number(value_cell.text)
@@ -403,11 +417,25 @@ def _find_candidates(cells: tuple[_Cell, ...]) -> tuple[_Candidate, ...]:
         orientations = (
             (
                 _nearest_concept(row_cells, value_cell, axis="column"),
-                _nearest_period(column_cells, value_cell, axis="row"),
+                _nearest_period(
+                    column_cells,
+                    value_cell,
+                    axis="row",
+                    excluded_positions={
+                        row for sheet, row in concept_rows if sheet == value_cell.sheet
+                    },
+                ),
             ),
             (
                 _nearest_concept(column_cells, value_cell, axis="row"),
-                _nearest_period(row_cells, value_cell, axis="column"),
+                _nearest_period(
+                    row_cells,
+                    value_cell,
+                    axis="column",
+                    excluded_positions={
+                        column for sheet, column in concept_columns if sheet == value_cell.sheet
+                    },
+                ),
             ),
         )
         for concept_match, period_match in orientations:
@@ -441,7 +469,7 @@ def _nearest_concept(
     candidates = []
     for cell in cells:
         concept = _ALIAS_TO_CONCEPT.get(_normalize_label(cell.text))
-        if concept:
+        if concept and getattr(cell, axis) < getattr(value_cell, axis):
             distance = abs(getattr(cell, axis) - getattr(value_cell, axis))
             candidates.append((distance, cell, concept))
     if not candidates:
@@ -454,10 +482,14 @@ def _nearest_concept(
 
 
 def _nearest_period(
-    cells: list[_Cell], value_cell: _Cell, *, axis: str
+    cells: list[_Cell], value_cell: _Cell, *, axis: str, excluded_positions: set[int]
 ) -> tuple[_Cell, _PeriodHeader] | None:
     candidates = []
     for cell in cells:
+        if getattr(cell, axis) >= getattr(value_cell, axis):
+            continue
+        if getattr(cell, axis) in excluded_positions:
+            continue
         header = _parse_period_header(cell.text)
         if header:
             distance = abs(getattr(cell, axis) - getattr(value_cell, axis))
