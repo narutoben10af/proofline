@@ -1,0 +1,67 @@
+{
+  "metrics": [
+    {
+      "applicability": "non-bank operating companies with comparable periods",
+      "display_name": "Revenue growth YoY",
+      "formula_id": "revenue_current_div_revenue_prior_minus_one",
+      "metric_id": "revenue_growth_yoy",
+      "required_roles": [
+        "revenue_current",
+        "revenue_prior"
+      ],
+      "role_concepts": {
+        "revenue_current": "revenue",
+        "revenue_prior": "revenue"
+      },
+      "tolerance": "0.005"
+    },
+    {
+      "applicability": "non-bank operating companies; issuer definitions may differ",
+      "display_name": "Operating margin",
+      "formula_id": "operating_profit_div_revenue",
+      "metric_id": "operating_margin",
+      "required_roles": [
+        "operating_profit",
+        "revenue"
+      ],
+      "role_concepts": {
+        "operating_profit": "operating_profit",
+        "revenue": "revenue"
+      },
+      "tolerance": "0.005"
+    },
+    {
+      "applicability": "non-bank operating companies",
+      "display_name": "Current ratio",
+      "formula_id": "current_assets_div_current_liabilities",
+      "metric_id": "current_ratio",
+      "required_roles": [
+        "current_assets",
+        "current_liabilities"
+      ],
+      "role_concepts": {
+        "current_assets": "current_assets",
+        "current_liabilities": "current_liabilities"
+      },
+      "tolerance": "0.01"
+    },
+    {
+      "applicability": "non-bank operating companies; project-defined non-GAAP measure",
+      "display_name": "Free-cash-flow margin (project-defined non-GAAP)",
+      "formula_id": "operating_cash_flow_minus_capex_div_revenue",
+      "metric_id": "fcf_margin",
+      "required_roles": [
+        "operating_cash_flow",
+        "capex",
+        "revenue"
+      ],
+      "role_concepts": {
+        "capex": "capex",
+        "operating_cash_flow": "operating_cash_flow",
+        "revenue": "revenue"
+      },
+      "tolerance": "0.005"
+    }
+  ],
+  "registry_version": "1.0.0"
+}
