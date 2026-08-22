@@ -207,6 +207,10 @@ export function createHandler(dependencies: HandlerDependencies) {
         console.error(JSON.stringify({
           event: "magic_assistant_provider_unavailable",
           status: error.statusCode,
+          reason: error.diagnostic?.reason ?? "temporarily_unavailable",
+          provider_status: error.diagnostic?.providerStatus ?? null,
+          quota_id: error.diagnostic?.quotaId ?? null,
+          model: error.diagnostic?.model ?? null,
         }));
         const code = error.statusCode === 429
           ? "provider_rate_limited"

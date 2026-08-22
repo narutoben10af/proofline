@@ -80,9 +80,28 @@ export interface ProviderConfig {
   model: string;
 }
 
+export type ProviderFailureReason =
+  | "requests_per_minute"
+  | "tokens_per_minute"
+  | "requests_per_day"
+  | "quota_not_allocated"
+  | "quota_rejected"
+  | "temporarily_unavailable";
+
+export interface ProviderFailureDiagnostic {
+  reason: ProviderFailureReason;
+  providerStatus: string | null;
+  quotaId: string | null;
+  model: string;
+}
+
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 export class ProviderUnavailableError extends Error {
-  constructor(message: string, public readonly statusCode = 0) {
+  constructor(
+    message: string,
+    public readonly statusCode = 0,
+    public readonly diagnostic: ProviderFailureDiagnostic | null = null,
+  ) {
     super(message);
   }
 }
@@ -149,6 +168,59 @@ async function boundedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
+function safeToken(value: unknown, maxLength = 160): string | null {
+  if (typeof value !== "string" || value.length === 0 || value.length > maxLength) return null;
+  return /^[A-Za-z0-9_.:/-]+$/.test(value) ? value : null;
+}
+
+export function diagnoseProviderFailure(
+  statusCode: number,
+  body: string,
+  requestedModel: string,
+): ProviderFailureDiagnostic {
+  let providerStatus: string | null = null;
+  let quotaId: string | null = null;
+  let message = "";
+  try {
+    const payload = JSON.parse(body) as {
+      error?: {
+        status?: unknown;
+        message?: unknown;
+        details?: Array<{
+          violations?: Array<{ quotaId?: unknown }>;
+        }>;
+      };
+    };
+    providerStatus = safeToken(payload.error?.status, 64);
+    message = typeof payload.error?.message === "string" ? payload.error.message : "";
+    for (const detail of payload.error?.details ?? []) {
+      for (const violation of detail.violations ?? []) {
+        const candidate = safeToken(violation.quotaId);
+        if (candidate) {
+          quotaId = candidate;
+          break;
+        }
+      }
+      if (quotaId) break;
+    }
+  } catch {
+    // Non-JSON provider responses still receive a bounded, non-sensitive reason.
+  }
+
+  const quotaText = `${quotaId ?? ""} ${message}`.toLowerCase();
+  let reason: ProviderFailureReason = "temporarily_unavailable";
+  if (statusCode === 429) {
+    if (/\blimit\s*:\s*0(?:\D|$)/i.test(message)) reason = "quota_not_allocated";
+    else if (quotaText.includes("token") && quotaText.includes("minute")) {
+      reason = "tokens_per_minute";
+    } else if (quotaText.includes("day")) reason = "requests_per_day";
+    else if (quotaText.includes("minute")) reason = "requests_per_minute";
+    else reason = "quota_rejected";
+  }
+
+  return { reason, providerStatus, quotaId, model: requestedModel };
+}
+
 function candidateText(payload: unknown): string {
   const value = payload as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: unknown }> } }>;
@@ -183,6 +255,7 @@ export async function proposeChart(
 
   const models = [config.model, ...SUPPORTED_MODELS.filter((model) => model !== config.model)];
   let finalStatus = 0;
+  let finalDiagnostic: ProviderFailureDiagnostic | null = null;
   for (const [modelIndex, model] of models.entries()) {
     const endpoint = providerEndpoint(model);
     for (let attempt = 0; attempt <= MAX_PROVIDER_RETRIES; attempt += 1) {
@@ -199,7 +272,11 @@ export async function proposeChart(
         });
         if (!response.ok) {
           finalStatus = response.status;
-          await boundedText(response);
+          finalDiagnostic = diagnoseProviderFailure(
+            response.status,
+            await boundedText(response),
+            model,
+          );
           if ([404, 408, 429, 500, 502, 503, 504].includes(response.status)) {
             if (attempt < MAX_PROVIDER_RETRIES) continue;
             break;
@@ -211,15 +288,18 @@ export async function proposeChart(
           const proposal = JSON.parse(candidateText(outer)) as unknown;
           return parseAndResolveProposal(proposal, evidence);
         } catch {
-          throw new ProviderResponseError("provider returned invalid chart proposal", response.status);
+          throw new ProviderResponseError(
+            "provider returned invalid chart proposal",
+            response.status,
+          );
         }
       } catch (error) {
         if (error instanceof ProviderResponseError) throw error;
         if (attempt < MAX_PROVIDER_RETRIES) continue;
         if (modelIndex < models.length - 1) break;
-        throw new ProviderUnavailableError("provider unavailable", finalStatus);
+        throw new ProviderUnavailableError("provider unavailable", finalStatus, finalDiagnostic);
       }
     }
   }
-  throw new ProviderUnavailableError("provider unavailable", finalStatus);
+  throw new ProviderUnavailableError("provider unavailable", finalStatus, finalDiagnostic);
 }

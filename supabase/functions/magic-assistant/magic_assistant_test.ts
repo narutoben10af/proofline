@@ -15,6 +15,7 @@ import {
 } from "./evidence.ts";
 import { createHandler } from "./handler.ts";
 import {
+  diagnoseProviderFailure,
   GOOGLE_API_ORIGIN,
   MAX_PROVIDER_RETRIES,
   proposeChart,
@@ -343,6 +344,53 @@ Deno.test("Gemma failures are bounded and invented IDs are rejected locally", as
     (error) => error instanceof ProviderResponseError,
   );
   assertEquals(malformedCalls, 1);
+});
+
+Deno.test("Gemma quota diagnostics classify safe dimensions without retaining provider text", () => {
+  const rpm = diagnoseProviderFailure(
+    429,
+    JSON.stringify({
+      error: {
+        status: "RESOURCE_EXHAUSTED",
+        message: "Quota exceeded for requests per minute.",
+        details: [{
+          violations: [{ quotaId: "GenerateRequestsPerMinutePerProjectPerModel-Tier1" }],
+        }],
+      },
+    }),
+    "gemma-4-26b-a4b-it",
+  );
+  assertEquals(rpm, {
+    reason: "requests_per_minute",
+    providerStatus: "RESOURCE_EXHAUSTED",
+    quotaId: "GenerateRequestsPerMinutePerProjectPerModel-Tier1",
+    model: "gemma-4-26b-a4b-it",
+  });
+
+  const unavailable = diagnoseProviderFailure(
+    429,
+    JSON.stringify({
+      error: {
+        status: "RESOURCE_EXHAUSTED",
+        message: "Quota exceeded for this project, limit: 0",
+      },
+    }),
+    "gemma-4-31b-it",
+  );
+  assertEquals(unavailable.reason, "quota_not_allocated");
+
+  const malformed = diagnoseProviderFailure(
+    429,
+    "<html>secret-provider-body</html>",
+    "gemma-4-31b-it",
+  );
+  assertEquals(malformed, {
+    reason: "quota_rejected",
+    providerStatus: null,
+    quotaId: null,
+    model: "gemma-4-31b-it",
+  });
+  assert(!JSON.stringify(malformed).includes("secret-provider-body"));
 });
 
 Deno.test("handler requires auth, reports not-configured honestly, and returns cited IDs", async () => {
