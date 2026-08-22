@@ -87,7 +87,105 @@
         "title": "AnalysisRequest",
         "type": "object"
       },
-      "AnalysisResponse": {
+      "AnalysisResponse-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "cached_output": {
+            "const": false,
+            "default": false,
+            "title": "Cached Output",
+            "type": "boolean"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/FinancialClaim-Input"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentVersion"
+            },
+            "title": "Documents",
+            "type": "array"
+          },
+          "fallback_disclosure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback Disclosure"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/Finding-Input"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "metric_registry_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Metric Registry Version",
+            "type": "string"
+          },
+          "metric_results": {
+            "items": {
+              "$ref": "#/components/schemas/MetricResult-Input"
+            },
+            "title": "Metric Results",
+            "type": "array"
+          },
+          "observations": {
+            "items": {
+              "$ref": "#/components/schemas/FactObservation-Input"
+            },
+            "title": "Observations",
+            "type": "array"
+          },
+          "output_status": {
+            "const": "calculated",
+            "default": "calculated",
+            "title": "Output Status",
+            "type": "string"
+          },
+          "policy_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "source_spans": {
+            "items": {
+              "$ref": "#/components/schemas/SourceSpan"
+            },
+            "title": "Source Spans",
+            "type": "array"
+          }
+        },
+        "required": [
+          "documents",
+          "source_spans",
+          "claims",
+          "observations",
+          "metric_results",
+          "findings"
+        ],
+        "title": "AnalysisResponse",
+        "type": "object"
+      },
+      "AnalysisResponse-Output": {
         "additionalProperties": false,
         "properties": {
           "cached_output": {
@@ -123,7 +221,7 @@
           },
           "findings": {
             "items": {
-              "$ref": "#/components/schemas/Finding"
+              "$ref": "#/components/schemas/Finding-Output"
             },
             "title": "Findings",
             "type": "array"
@@ -136,7 +234,7 @@
           },
           "metric_results": {
             "items": {
-              "$ref": "#/components/schemas/MetricResult"
+              "$ref": "#/components/schemas/MetricResult-Output"
             },
             "title": "Metric Results",
             "type": "array"
@@ -218,6 +316,95 @@
         ],
         "title": "Classification",
         "type": "string"
+      },
+      "ClassificationCounts": {
+        "additionalProperties": false,
+        "properties": {
+          "contradicted": {
+            "minimum": 0.0,
+            "title": "Contradicted",
+            "type": "integer"
+          },
+          "supported": {
+            "minimum": 0.0,
+            "title": "Supported",
+            "type": "integer"
+          },
+          "uncertain": {
+            "minimum": 0.0,
+            "title": "Uncertain",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "supported",
+          "uncertain",
+          "contradicted"
+        ],
+        "title": "ClassificationCounts",
+        "type": "object"
+      },
+      "CompanyLens": {
+        "additionalProperties": false,
+        "properties": {
+          "additional_context": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ResolvedEconomicContextPoint-Output"
+            },
+            "maxItems": 4,
+            "title": "Additional Context",
+            "type": "array"
+          },
+          "company": {
+            "title": "Company",
+            "type": "string"
+          },
+          "company_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "context_caveat": {
+            "const": "Context only; no causal relationship is asserted.",
+            "default": "Context only; no causal relationship is asserted.",
+            "title": "Context Caveat",
+            "type": "string"
+          },
+          "economic_context": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedEconomicContextPoint-Output"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Economic Context",
+            "type": "array"
+          },
+          "reviewed_period": {
+            "title": "Reviewed Period",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "trend": {
+            "$ref": "#/components/schemas/FinancialTrendSeries-Output"
+          }
+        },
+        "required": [
+          "company_id",
+          "company",
+          "reviewed_period",
+          "trend",
+          "economic_context"
+        ],
+        "title": "CompanyLens",
+        "type": "object"
       },
       "CreateSessionRequest": {
         "additionalProperties": false,
@@ -825,7 +1012,350 @@
         "title": "FinancialClaim",
         "type": "object"
       },
-      "Finding": {
+      "FinancialTrendPoint-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_source_span_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Source Span Id"
+          },
+          "historical": {
+            "const": true,
+            "default": true,
+            "title": "Historical",
+            "type": "boolean"
+          },
+          "official_source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Official Source Url"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "reporting_basis": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Reporting Basis",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "period",
+          "value",
+          "reporting_basis"
+        ],
+        "title": "FinancialTrendPoint",
+        "type": "object"
+      },
+      "FinancialTrendPoint-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_source_span_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[A-Za-z0-9._:-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Source Span Id"
+          },
+          "historical": {
+            "const": true,
+            "default": true,
+            "title": "Historical",
+            "type": "boolean"
+          },
+          "official_source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Official Source Url"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "reporting_basis": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Reporting Basis",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "period",
+          "value",
+          "reporting_basis"
+        ],
+        "title": "FinancialTrendPoint",
+        "type": "object"
+      },
+      "FinancialTrendSeries-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "company": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Company",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "includes_forecast": {
+            "const": false,
+            "default": false,
+            "title": "Includes Forecast",
+            "type": "boolean"
+          },
+          "indicator": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Indicator",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/FinancialTrendPoint-Input"
+            },
+            "maxItems": 20,
+            "minItems": 3,
+            "title": "Points",
+            "type": "array"
+          },
+          "unit": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "company",
+          "indicator",
+          "unit",
+          "points"
+        ],
+        "title": "FinancialTrendSeries",
+        "type": "object"
+      },
+      "FinancialTrendSeries-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "company": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Company",
+            "type": "string"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{3}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "includes_forecast": {
+            "const": false,
+            "default": false,
+            "title": "Includes Forecast",
+            "type": "boolean"
+          },
+          "indicator": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Indicator",
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/FinancialTrendPoint-Output"
+            },
+            "maxItems": 20,
+            "minItems": 3,
+            "title": "Points",
+            "type": "array"
+          },
+          "unit": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "company",
+          "indicator",
+          "unit",
+          "points"
+        ],
+        "title": "FinancialTrendSeries",
+        "type": "object"
+      },
+      "Finding-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "claim_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Claim Id",
+            "type": "string"
+          },
+          "classification": {
+            "$ref": "#/components/schemas/Classification"
+          },
+          "evidence_source_span_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            "title": "Evidence Source Span Ids",
+            "type": "array"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "metric_result_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Metric Result Id",
+            "type": "string"
+          },
+          "policy_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "suggested_investigation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Investigation"
+          },
+          "tolerance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tolerance"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "claim_id",
+          "metric_result_id",
+          "classification",
+          "rationale",
+          "evidence_source_span_ids"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "Finding-Output": {
         "additionalProperties": false,
         "properties": {
           "claim_id": {
@@ -1028,7 +1558,82 @@
         "title": "MetricId",
         "type": "string"
       },
-      "MetricResult": {
+      "MetricResult-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "exceptional_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExceptionalState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "formula_id": {
+            "title": "Formula Id",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "input_observation_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            "title": "Input Observation Ids",
+            "type": "array"
+          },
+          "metric_id": {
+            "$ref": "#/components/schemas/MetricId"
+          },
+          "registry_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Registry Version",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "metric_id",
+          "formula_id",
+          "input_observation_ids"
+        ],
+        "title": "MetricResult",
+        "type": "object"
+      },
+      "MetricResult-Output": {
         "additionalProperties": false,
         "properties": {
           "exceptional_state": {
@@ -1217,6 +1822,412 @@
         "title": "ProcessingError",
         "type": "object"
       },
+      "ReportRenderBundle": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/AnalysisResponse-Input"
+          },
+          "company": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Company",
+            "type": "string"
+          },
+          "company_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Company Id",
+            "type": "string"
+          },
+          "data_handling_disclosure": {
+            "const": "Deletion applies only to application-managed session storage. It does not provide secure erasure, delete data held by providers, or remove PDF or JSON exports already downloaded by users.",
+            "default": "Deletion applies only to application-managed session storage. It does not provide secure erasure, delete data held by providers, or remove PDF or JSON exports already downloaded by users.",
+            "title": "Data Handling Disclosure",
+            "type": "string"
+          },
+          "economic_context": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedEconomicContextPoint-Input"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Economic Context",
+            "type": "array"
+          },
+          "includes_forecast": {
+            "const": false,
+            "default": false,
+            "title": "Includes Forecast",
+            "type": "boolean"
+          },
+          "metric_registry_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Metric Registry Version",
+            "type": "string"
+          },
+          "policy_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Policy Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/ReportSnapshot"
+          },
+          "source_disclosure": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Source Disclosure",
+            "type": "string"
+          },
+          "source_mode": {
+            "$ref": "#/components/schemas/SourceMode"
+          },
+          "trend": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FinancialTrendSeries-Input"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "company_id",
+          "company",
+          "analysis",
+          "snapshot",
+          "economic_context",
+          "source_mode",
+          "source_disclosure"
+        ],
+        "title": "ReportRenderBundle",
+        "type": "object"
+      },
+      "ReportSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "classification_counts": {
+            "$ref": "#/components/schemas/ClassificationCounts"
+          },
+          "economic_context_point_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Economic Context Point Ids",
+            "type": "array"
+          },
+          "evidence_chain_sha256": {
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Evidence Chain Sha256",
+            "type": "string"
+          },
+          "finding_ids": {
+            "items": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9._:-]+$",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "includes_forecast": {
+            "const": false,
+            "default": false,
+            "title": "Includes Forecast",
+            "type": "boolean"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Limitations",
+            "type": "array"
+          },
+          "review_status": {
+            "const": "reviewed",
+            "default": "reviewed",
+            "title": "Review Status",
+            "type": "string"
+          },
+          "reviewed_at": {
+            "format": "date-time",
+            "title": "Reviewed At",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": "1.0.0",
+            "default": "1.0.0",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "analysis_id",
+          "title",
+          "reviewed_at",
+          "classification_counts",
+          "finding_ids",
+          "evidence_chain_sha256",
+          "economic_context_point_ids",
+          "limitations"
+        ],
+        "title": "ReportSnapshot",
+        "type": "object"
+      },
+      "ResolvedEconomicContextPoint-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "caveat": {
+            "const": "Context only; no causal relationship is asserted.",
+            "default": "Context only; no causal relationship is asserted.",
+            "title": "Caveat",
+            "type": "string"
+          },
+          "company": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Company",
+            "type": "string"
+          },
+          "comparability_warning": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Comparability Warning",
+            "type": "string"
+          },
+          "default_visible": {
+            "default": true,
+            "title": "Default Visible",
+            "type": "boolean"
+          },
+          "display_value": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Display Value",
+            "type": "string"
+          },
+          "geography": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Geography",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "indicator": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Indicator",
+            "type": "string"
+          },
+          "official_source_url": {
+            "title": "Official Source Url",
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "published_on": {
+            "format": "date",
+            "title": "Published On",
+            "type": "string"
+          },
+          "relevance": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Relevance",
+            "type": "string"
+          },
+          "retrieved_on": {
+            "format": "date",
+            "title": "Retrieved On",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "company",
+          "indicator",
+          "geography",
+          "period",
+          "value",
+          "display_value",
+          "unit",
+          "official_source_url",
+          "published_on",
+          "retrieved_on",
+          "relevance",
+          "comparability_warning"
+        ],
+        "title": "ResolvedEconomicContextPoint",
+        "type": "object"
+      },
+      "ResolvedEconomicContextPoint-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "caveat": {
+            "const": "Context only; no causal relationship is asserted.",
+            "default": "Context only; no causal relationship is asserted.",
+            "title": "Caveat",
+            "type": "string"
+          },
+          "company": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Company",
+            "type": "string"
+          },
+          "comparability_warning": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Comparability Warning",
+            "type": "string"
+          },
+          "default_visible": {
+            "default": true,
+            "title": "Default Visible",
+            "type": "boolean"
+          },
+          "display_value": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Display Value",
+            "type": "string"
+          },
+          "geography": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Geography",
+            "type": "string"
+          },
+          "id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9._:-]+$",
+            "title": "Id",
+            "type": "string"
+          },
+          "indicator": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Indicator",
+            "type": "string"
+          },
+          "official_source_url": {
+            "title": "Official Source Url",
+            "type": "string"
+          },
+          "period": {
+            "$ref": "#/components/schemas/Period"
+          },
+          "published_on": {
+            "format": "date",
+            "title": "Published On",
+            "type": "string"
+          },
+          "relevance": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Relevance",
+            "type": "string"
+          },
+          "retrieved_on": {
+            "format": "date",
+            "title": "Retrieved On",
+            "type": "string"
+          },
+          "unit": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "company",
+          "indicator",
+          "geography",
+          "period",
+          "value",
+          "display_value",
+          "unit",
+          "official_source_url",
+          "published_on",
+          "retrieved_on",
+          "relevance",
+          "comparability_warning"
+        ],
+        "title": "ResolvedEconomicContextPoint",
+        "type": "object"
+      },
       "SessionStatus": {
         "additionalProperties": false,
         "properties": {
@@ -1299,6 +2310,14 @@
         ],
         "title": "SessionStatus",
         "type": "object"
+      },
+      "SourceMode": {
+        "enum": [
+          "calculated_live",
+          "verified_cached"
+        ],
+        "title": "SourceMode",
+        "type": "string"
       },
       "SourceSpan": {
         "additionalProperties": false,
@@ -1484,7 +2503,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AnalysisResponse"
+                  "$ref": "#/components/schemas/AnalysisResponse-Output"
                 }
               }
             },
@@ -1504,6 +2523,102 @@
         "summary": "Create Analysis",
         "tags": [
           "analysis"
+        ]
+      }
+    },
+    "/api/v1/company-lenses/{company_id}": {
+      "get": {
+        "operationId": "company_lens_api_v1_company_lenses__company_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "company_id",
+            "required": true,
+            "schema": {
+              "title": "Company Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompanyLens"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Company Lens",
+        "tags": [
+          "reporting"
+        ]
+      }
+    },
+    "/api/v1/reports/pdf": {
+      "post": {
+        "operationId": "render_report_api_v1_reports_pdf_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "output",
+            "required": false,
+            "schema": {
+              "default": "pdf",
+              "enum": [
+                "pdf",
+                "evidence-json"
+              ],
+              "title": "Output",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportRenderBundle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {},
+              "application/pdf": {}
+            },
+            "description": "Deterministic PDF report or reviewed JSON evidence export."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Render Report",
+        "tags": [
+          "reporting"
         ]
       }
     },
