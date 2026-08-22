@@ -427,3 +427,33 @@ Deno.test("handler labels the stable owner-scoped bootstrap context as verified 
   assertEquals(payload.data_mode, "verified_demo");
   assert(!JSON.stringify(payload).includes("numeric_value"));
 });
+
+Deno.test("browser preflight allows every header emitted by supabase-js", async () => {
+  const origin = "https://magicfin.narutoxkillua.chatgpt.site";
+  const handler = createHandler({
+    env: { MAGIC_ASSISTANT_ALLOWED_ORIGINS: origin },
+    authenticate: () => Promise.reject(new Error("preflight must not authenticate")),
+    loadEvidence: () => Promise.reject(new Error("preflight must not load evidence")),
+    propose: () => Promise.reject(new Error("preflight must not call the provider")),
+  });
+  const response = await handler(
+    new Request("https://function.example/magic-assistant", {
+      method: "OPTIONS",
+      headers: {
+        origin,
+        "access-control-request-method": "POST",
+        "access-control-request-headers": "apikey,authorization,content-type,x-client-info",
+      },
+    }),
+  );
+  const allowed = new Set(
+    (response.headers.get("access-control-allow-headers") ?? "")
+      .split(",")
+      .map((header) => header.trim().toLowerCase()),
+  );
+  assertEquals(response.status, 204);
+  assertEquals(response.headers.get("access-control-allow-origin"), origin);
+  for (const header of ["apikey", "authorization", "content-type", "x-client-info"]) {
+    assert(allowed.has(header), `preflight omitted ${header}`);
+  }
+});
