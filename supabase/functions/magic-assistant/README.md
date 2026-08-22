@@ -17,9 +17,11 @@ RLS-authorized normalized evidence, and a server-side `GEMINI_API_KEY` Edge Func
   uploads, and deletion commands are rejected as unknown or out-of-scope input.
 - The model receives the bounded question plus normalized evidence metadata and stable IDs. It does
   not receive raw file URLs, file bytes, model credentials, or authoritative numeric values.
-- Gemma may return only a `line`, `bar`, or `comparison` proposal with safe text, observation IDs,
-  source IDs, and an exact period range. Local validation rejects invented IDs, unmatched citations,
-  mixed issuer/currency/unit/period bases, more than four series, or more than 24 points.
+- Gemma may return only a `line`, `bar`, or `comparison` proposal containing observation IDs, source
+  IDs, and an exact period range. It cannot author titles, descriptions, series labels, or other
+  display text. The backend supplies reviewed renderer-owned text from allowlisted concepts. Local
+  validation rejects invented IDs, unmatched citations, mixed issuer/currency/unit/period bases,
+  mixed-concept series, more than four series, or more than 24 points.
 - The response contains proposal IDs only. The frontend must resolve actual values through its
   authenticated RLS-backed evidence path. It must never interpret model output as chart values.
 - Google calls use exactly the two allowlisted Gemma 4 `generateContent` endpoints, refuse

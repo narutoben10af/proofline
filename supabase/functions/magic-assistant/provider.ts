@@ -14,8 +14,6 @@ const CHART_RESPONSE_SCHEMA = {
   required: [
     "schema_version",
     "chart_type",
-    "title",
-    "description",
     "period_start",
     "period_end",
     "series",
@@ -24,8 +22,6 @@ const CHART_RESPONSE_SCHEMA = {
   properties: {
     schema_version: { type: "string", enum: [SCHEMA_VERSION] },
     chart_type: { type: "string", enum: ["line", "bar", "comparison"] },
-    title: { type: "string", minLength: 1, maxLength: 160 },
-    description: { type: "string", minLength: 1, maxLength: 500 },
     period_start: { anyOf: [{ type: "string", format: "date" }, { type: "null" }] },
     period_end: { type: "string", format: "date" },
     series: {
@@ -35,9 +31,8 @@ const CHART_RESPONSE_SCHEMA = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["label", "observation_ids", "source_ids"],
+        required: ["observation_ids", "source_ids"],
         properties: {
-          label: { type: "string", minLength: 1, maxLength: 160 },
           observation_ids: {
             type: "array",
             minItems: 1,
@@ -100,6 +95,7 @@ function promptFor(request: MagicAssistantRequest, evidence: NormalizedEvidence[
       "Return only JSON matching the response schema.",
       "Use only line, bar, or comparison.",
       "Never return numeric values, formulas, code, JavaScript, Vega, HTML, URLs, or actions.",
+      "Do not return titles, descriptions, labels, or any display text; the backend owns it.",
       "Every observation_id and source_id must be copied exactly from supplied evidence.",
       "The period range and citations must exactly cover the selected observations.",
     ],

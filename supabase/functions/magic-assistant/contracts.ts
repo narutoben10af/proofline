@@ -11,6 +11,20 @@ const SESSION_ID_PATTERN = /^src-[A-Za-z0-9_-]{32}$/;
 const SOURCE_ID_PATTERN = /^file-[A-Za-z0-9_-]{24}$/;
 const OBSERVATION_ID_PATTERN = /^fact:[a-f0-9]{20}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const CONCEPT_LABELS = {
+  revenue: "Revenue",
+  operating_profit: "Operating profit",
+  current_assets: "Current assets",
+  current_liabilities: "Current liabilities",
+  operating_cash_flow: "Operating cash flow",
+  capex: "Capital expenditure",
+} as const;
+const CHART_TITLES: Record<ChartType, string> = {
+  line: "Verified financial trend",
+  bar: "Verified financial values by period",
+  comparison: "Verified financial comparison",
+};
+const CHART_DESCRIPTION = "Values resolve from cited normalized evidence.";
 
 export type ChartType = "line" | "bar" | "comparison";
 
@@ -108,6 +122,12 @@ function identifierValue(value: unknown, label: string): string {
 
 function sourceIdentifier(value: unknown, label: string): string {
   return prefixedIdentifier(value, label, SOURCE_ID_PATTERN);
+}
+
+function conceptValue(value: unknown, label: string): keyof typeof CONCEPT_LABELS {
+  const concept = stringValue(value, label, 128);
+  if (!(concept in CONCEPT_LABELS)) throw new Error(`${label} is not an allowlisted concept`);
+  return concept as keyof typeof CONCEPT_LABELS;
 }
 
 function dateValue(value: unknown, label: string): string {
@@ -214,7 +234,7 @@ export function parseEvidenceRows(
       ),
       observation_id: identifierValue(record.observation_id, `evidence[${index}].observation_id`),
       issuer: safeText(record.issuer, `evidence[${index}].issuer`, 256),
-      concept: safeText(record.concept, `evidence[${index}].concept`, 128),
+      concept: conceptValue(record.concept, `evidence[${index}].concept`),
       period_start: periodStart,
       period_end: periodEnd,
       duration_weeks: durationWeeks as number | null,
@@ -252,8 +272,6 @@ export function parseAndResolveProposal(
     [
       "schema_version",
       "chart_type",
-      "title",
-      "description",
       "period_start",
       "period_end",
       "series",
@@ -265,6 +283,7 @@ export function parseAndResolveProposal(
   if (!(["line", "bar", "comparison"] as unknown[]).includes(record.chart_type)) {
     throw new Error("chart_type is not allowlisted");
   }
+  const chartType = record.chart_type as ChartType;
   const periodStart = record.period_start === null
     ? null
     : dateValue(record.period_start, "period_start");
@@ -280,7 +299,7 @@ export function parseAndResolveProposal(
   const selectedRows: NormalizedEvidence[] = [];
   const series = record.series.map((item, index): ChartSeriesProposal => {
     const proposed = objectValue(item, `series[${index}]`);
-    exactKeys(proposed, ["label", "observation_ids", "source_ids"], `series[${index}]`);
+    exactKeys(proposed, ["observation_ids", "source_ids"], `series[${index}]`);
     const observationIds = uniqueStrings(
       proposed.observation_ids,
       `series[${index}].observation_ids`,
@@ -296,6 +315,9 @@ export function parseAndResolveProposal(
     if (new Set(rows.map((row) => row.period_end)).size !== rows.length) {
       throw new Error("a chart series cannot repeat a period");
     }
+    const concepts = new Set(rows.map((row) => row.concept));
+    if (concepts.size !== 1) throw new Error("a chart series cannot mix concepts");
+    const concept = rows[0].concept as keyof typeof CONCEPT_LABELS;
     const sourceIds = uniqueStrings(
       proposed.source_ids,
       `series[${index}].source_ids`,
@@ -308,7 +330,7 @@ export function parseAndResolveProposal(
     }
     selectedRows.push(...rows);
     return {
-      label: safeText(proposed.label, `series[${index}].label`, 160),
+      label: CONCEPT_LABELS[concept],
       observation_ids: observationIds,
       source_ids: sourceIds,
     };
@@ -341,9 +363,9 @@ export function parseAndResolveProposal(
   }
   return {
     schema_version: SCHEMA_VERSION,
-    chart_type: record.chart_type as ChartType,
-    title: safeText(record.title, "title", 160),
-    description: safeText(record.description, "description", 500),
+    chart_type: chartType,
+    title: CHART_TITLES[chartType],
+    description: CHART_DESCRIPTION,
     period_start: periodStart,
     period_end: periodEnd,
     series,

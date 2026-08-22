@@ -93,13 +93,10 @@ function chartPayload(overrides: Record<string, unknown> = {}): Record<string, u
   return {
     schema_version: "1.0.0",
     chart_type: "line",
-    title: "Revenue trend",
-    description: "Reported annual revenue",
     period_start: "2024-01-01",
     period_end: "2025-12-31",
     series: [
       {
-        label: "Revenue",
         observation_ids: ["fact:11111111111111111111", "fact:22222222222222222222"],
         source_ids: [SOURCE_A, SOURCE_B],
       },
@@ -148,6 +145,9 @@ Deno.test("chart proposal returns IDs and citations without authoritative values
     "fact:22222222222222222222",
   ]);
   assertEquals(proposal.source_ids, [SOURCE_A, SOURCE_B]);
+  assertEquals(proposal.title, "Verified financial trend");
+  assertEquals(proposal.description, "Values resolve from cited normalized evidence.");
+  assertEquals(proposal.series[0].label, "Revenue");
   assert(!JSON.stringify(proposal).includes("numeric_value"));
   assert(!JSON.stringify(proposal).includes('"values"'));
 });
@@ -156,7 +156,7 @@ Deno.test("chart proposal rejects invented IDs, model values, unsafe content, an
   await assertRejects(() =>
     parseAndResolveProposal(
       chartPayload({
-        series: [{ label: "Revenue", observation_ids: ["invented"], source_ids: [SOURCE_A] }],
+        series: [{ observation_ids: ["invented"], source_ids: [SOURCE_A] }],
       }),
       evidenceRows(),
     )
@@ -165,16 +165,39 @@ Deno.test("chart proposal rejects invented IDs, model values, unsafe content, an
     parseAndResolveProposal(chartPayload({ values: [1, 2] }), evidenceRows())
   );
   await assertRejects(() =>
-    parseAndResolveProposal(chartPayload({ title: "<script>" }), evidenceRows())
+    parseAndResolveProposal(
+      chartPayload({
+        series: Array.from({ length: 5 }, () => ({
+          observation_ids: ["fact:11111111111111111111"],
+          source_ids: [SOURCE_A],
+        })),
+      }),
+      evidenceRows(),
+    )
+  );
+});
+
+Deno.test("chart proposal rejects all model-authored display text", async () => {
+  await assertRejects(() =>
+    parseAndResolveProposal(
+      chartPayload({ title: "Revenue was 123.45 million" }),
+      evidenceRows(),
+    )
+  );
+  await assertRejects(() =>
+    parseAndResolveProposal(
+      chartPayload({ description: "Open https://attacker.example/report.pdf" }),
+      evidenceRows(),
+    )
   );
   await assertRejects(() =>
     parseAndResolveProposal(
       chartPayload({
-        series: Array.from({ length: 5 }, (_, index) => ({
-          label: `Series ${index}`,
-          observation_ids: ["fact:11111111111111111111"],
-          source_ids: [SOURCE_A],
-        })),
+        series: [{
+          label: "Compute revenue / shares outstanding",
+          observation_ids: ["fact:11111111111111111111", "fact:22222222222222222222"],
+          source_ids: [SOURCE_A, SOURCE_B],
+        }],
       }),
       evidenceRows(),
     )
@@ -277,6 +300,11 @@ Deno.test("Gemma call uses fixed endpoint, no redirects, structured schema, and 
   const body = String(recordedInit?.body);
   assert(body.includes("responseJsonSchema"));
   assert(body.includes("Never return numeric values"));
+  const providerRequest = JSON.parse(body);
+  const schema = providerRequest.generationConfig.responseJsonSchema;
+  assert(!("title" in schema.properties));
+  assert(!("description" in schema.properties));
+  assert(!("label" in schema.properties.series.items.properties));
   assert(!body.includes(secret));
   assert(!body.includes("numeric_value"));
   assert(!JSON.stringify(proposal).includes(secret));
