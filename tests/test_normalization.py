@@ -173,3 +173,36 @@ def test_duplicate_concept_period_values_are_omitted_and_do_not_feed_metrics() -
         "fact_ambiguous",
         "no_financial_facts",
     }
+
+
+def test_four_digit_financial_value_is_not_misread_as_a_period_header() -> None:
+    content = _xlsx(
+        [
+            ["Issuer", "Alpine Robotics SE"],
+            ["Entity scope", "Alpine Robotics SE consolidated"],
+            ["Currency", "EUR"],
+            ["Units", "millions"],
+            ["Restatement basis", "not restated"],
+            ["Line item", 2024, 2025],
+            ["Revenue", 12_300, 13_400],
+            ["Operating loss profit", 2_345, -678],
+            ["Total current assets", 7_800, 8_900],
+            ["Total current liabilities", 4_500, 5_600],
+        ],
+        "Consolidated statement",
+    )
+    cells = StructuralXlsxAdapter().extract_cells(content, "four-digit-value")
+
+    result = normalize_financial_workbook(cells, "four-digit-value")
+
+    operating = {
+        fact.observation.period.end.year: fact.observation.numeric_value
+        for fact in result.facts
+        if fact.observation.concept == "operating_profit"
+    }
+    assert operating == {2024: Decimal("2345000000"), 2025: Decimal("-678000000")}
+    assert {item.plan.metric_id for item in result.metric_inputs} >= {
+        MetricId.OPERATING_MARGIN,
+        MetricId.CURRENT_RATIO,
+        MetricId.REVENUE_GROWTH_YOY,
+    }
