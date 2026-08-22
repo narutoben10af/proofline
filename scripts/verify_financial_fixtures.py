@@ -9,7 +9,6 @@ import sys
 from decimal import Decimal, getcontext
 from pathlib import Path
 
-
 getcontext().prec = 40
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE_DIR = ROOT / "fixtures" / "financial"
@@ -22,9 +21,7 @@ def load_json(name: str):
 
 
 def load_facts():
-    with (FIXTURE_DIR / "normalized_facts.csv").open(
-        encoding="utf-8", newline=""
-    ) as handle:
+    with (FIXTURE_DIR / "normalized_facts.csv").open(encoding="utf-8", newline="") as handle:
         rows = list(csv.DictReader(handle))
     return {row["fact_id"]: row for row in rows}
 
@@ -115,21 +112,16 @@ def main() -> int:
 
     hero = heroes["cases"][0]
     assert hero["kind"] == "genuine_exception"
-    margin_2025 = value(facts, "pcg_operating_loss_2025") / value(
-        facts, "pcg_revenue_2025"
+    margin_2025 = value(facts, "pcg_operating_loss_2025") / value(facts, "pcg_revenue_2025")
+    margin_2024 = value(facts, "pcg_operating_profit_2024") / value(facts, "pcg_revenue_2024")
+    assert (
+        abs((margin_2025 - margin_2024) - Decimal(hero["calculations"]["operating_margin_change"]))
+        <= TOLERANCE
     )
-    margin_2024 = value(facts, "pcg_operating_profit_2024") / value(
-        facts, "pcg_revenue_2024"
-    )
-    assert abs(
-        (margin_2025 - margin_2024)
-        - Decimal(hero["calculations"]["operating_margin_change"])
-    ) <= TOLERANCE
 
     rounding = heroes["cases"][1]
     difference = abs(
-        Decimal(rounding["normalized_claim_value_rm_million"])
-        - value(facts, "pcg_revenue_2025")
+        Decimal(rounding["normalized_claim_value_rm_million"]) - value(facts, "pcg_revenue_2025")
     )
     assert difference == Decimal(rounding["absolute_difference_rm_million"])
     assert difference <= Decimal(50)
@@ -147,4 +139,4 @@ if __name__ == "__main__":
         raise SystemExit(main())
     except (AssertionError, KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
