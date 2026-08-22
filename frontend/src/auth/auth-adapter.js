@@ -18,6 +18,21 @@ function callbackParameters(url) {
   return params;
 }
 
+function safeProfile(user) {
+  const email = typeof user?.email === "string" ? user.email.trim().slice(0, 320) : "";
+  const metadata = user?.user_metadata && typeof user.user_metadata === "object"
+    ? user.user_metadata
+    : {};
+  const displayName = [metadata.full_name, metadata.name, metadata.user_name]
+    .find((value) => typeof value === "string" && value.trim())
+    ?.trim()
+    .slice(0, 160) || "";
+  return {
+    ...(email ? { email } : {}),
+    ...(displayName ? { displayName } : {}),
+  };
+}
+
 export class SupabaseAuthAdapter {
   constructor(config, client) {
     this.config = config;
@@ -28,6 +43,8 @@ export class SupabaseAuthAdapter {
     this.session = null;
     this.listeners = new Set();
     this.subscription = null;
+    this.callbackInFlight = false;
+    this.callbackRevision = 0;
   }
 
   subscribe(listener) {
@@ -44,13 +61,14 @@ export class SupabaseAuthAdapter {
 
   async initialize() {
     if (!this.config.configured || !this.client) return this.state;
+    const callbackRevision = this.callbackRevision;
     this.emit({ status: AUTH_STATUS.LOADING });
     if (!this.subscription) {
       const { data } = this.client.auth.onAuthStateChange((event, session) => {
         if (event === "SIGNED_OUT") {
           this.session = null;
           this.emit(unauthenticatedState());
-        } else if (session) {
+        } else if (session && !this.callbackInFlight) {
           void this.resolveSession(session);
         }
       });
@@ -58,6 +76,7 @@ export class SupabaseAuthAdapter {
     }
 
     const { data, error } = await this.client.auth.getSession();
+    if (this.callbackInFlight || this.callbackRevision !== callbackRevision || this.session) return this.state;
     if (error) return this.emit(errorState(AUTH_REASON.AUTH_SESSION_INVALID));
     if (!data.session) {
       this.session = null;
@@ -82,7 +101,11 @@ export class SupabaseAuthAdapter {
     }
 
     this.session = session;
-    return this.emit({ status: AUTH_STATUS.AUTHENTICATED, ownerId: verifiedOwner });
+    return this.emit({
+      status: AUTH_STATUS.AUTHENTICATED,
+      ownerId: verifiedOwner,
+      ...safeProfile(data.user),
+    });
   }
 
   async signInWithGoogle(returnTo = "/") {
@@ -136,15 +159,21 @@ export class SupabaseAuthAdapter {
       };
     }
 
+    this.callbackInFlight = true;
+    this.callbackRevision += 1;
     this.emit({ status: AUTH_STATUS.LOADING });
-    const { data, error } = await this.client.auth.exchangeCodeForSession(code);
-    if (error || !data.session) {
-      return {
-        state: this.emit(errorState(AUTH_REASON.AUTH_EXCHANGE_FAILED)),
-        returnTo,
-      };
+    try {
+      const { data, error } = await this.client.auth.exchangeCodeForSession(code);
+      if (error || !data.session) {
+        return {
+          state: this.emit(errorState(AUTH_REASON.AUTH_EXCHANGE_FAILED)),
+          returnTo,
+        };
+      }
+      return { state: await this.resolveSession(data.session), returnTo };
+    } finally {
+      this.callbackInFlight = false;
     }
-    return { state: await this.resolveSession(data.session), returnTo };
   }
 
   async signOut() {
@@ -173,5 +202,7 @@ export class SupabaseAuthAdapter {
     this.subscription = null;
     this.listeners.clear();
     this.session = null;
+    this.callbackInFlight = false;
+    this.callbackRevision = 0;
   }
 }

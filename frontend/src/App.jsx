@@ -165,8 +165,10 @@ function MetricDefinitionButton({ metricId, source }) {
   return <><button ref={triggerRef} className="metric-info-button" type="button" aria-haspopup="dialog" aria-controls={open ? dialogId : undefined} aria-label={`Define ${definition.name}`} aria-expanded={open} onClick={() => setOpen(true)}><Info size={14} weight="bold" aria-hidden="true" /></button>{dialog}</>;
 }
 
-function Sidebar({ route, onNavigate, onOpenAssistant, assistantButtonRef, mobileOpen, onCloseMobile, panelRef, backgroundInert }) {
+function Sidebar({ route, onNavigate, onOpenAssistant, assistantButtonRef, mobileOpen, onCloseMobile, panelRef, backgroundInert, authState }) {
   const go = (next) => { onNavigate(next); onCloseMobile(); };
+  const authenticated = authState?.status === "authenticated";
+  const sessionLabel = authenticated ? "Verified session" : authState?.status === "loading" ? "Session pending" : "Not signed in";
   return (
     <aside ref={panelRef} className={`sidebar ${mobileOpen ? "mobile-open" : ""}`} aria-label="Product navigation" tabIndex="-1" inert={backgroundInert} aria-hidden={backgroundInert ? "true" : undefined}>
       <div className="brand-lockup"><button type="button" onClick={() => go("/")} aria-label="MagicFin home"><span className="brand-spark" aria-hidden="true"><Sparkle size={16} weight="fill" /></span><span><strong>MagicFin</strong><small>Financial evidence, made clear</small></span></button><button className="mobile-close" type="button" onClick={onCloseMobile} aria-label="Close navigation"><X size={20} /></button></div>
@@ -174,6 +176,7 @@ function Sidebar({ route, onNavigate, onOpenAssistant, assistantButtonRef, mobil
       <div className="sidebar-spacer" />
       <button ref={assistantButtonRef} className="assistant-entry" type="button" onClick={(event) => { onOpenAssistant(event.currentTarget); onCloseMobile(); }}><MagicWand size={18} aria-hidden="true" /><span><strong>Magic Assistant</strong><small>Fixture answers with citations</small></span><CaretRight size={15} aria-hidden="true" /></button>
       <nav className="utility-nav" aria-label="Account and settings">{utilityNav.map(({ route: itemRoute, label, icon: Icon }) => <button key={itemRoute} type="button" className={route === itemRoute ? "active" : ""} aria-label={label} aria-current={route === itemRoute ? "page" : undefined} onClick={() => go(itemRoute)}><Icon size={17} aria-hidden="true" /><span>{label}</span></button>)}</nav>
+      <div className="sidebar-account-status" role="status" aria-live="polite"><StatusTag tone={authenticated ? "success" : "neutral"}>{sessionLabel}</StatusTag>{authenticated && <small>{authState.email || "Google account"}</small>}</div>
       <div className="sidebar-legal"><button type="button" onClick={() => go("/privacy")}>Privacy & data</button><span aria-hidden="true">·</span><button type="button" onClick={() => go("/legal")}>Legal</button><small>Demo data · human-checked</small></div>
     </aside>
   );
@@ -261,7 +264,7 @@ function CompanyPage({ data, onNavigate, onOpenAssistant, onOpenSource }) {
   );
 }
 
-function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady }) {
+function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureReady, onAnalysisReady, authState, privateStorage }) {
   const inputRef = useRef(null);
   const [state, setState] = useState("empty");
   const [files, setFiles] = useState([]);
@@ -273,6 +276,7 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
   const query = search.trim().toLowerCase();
   const visibleSources = sources.filter((source) => (filter === "all" || (filter === "ready" ? source.status === "Validated" : source.status !== "Validated")) && (!query || `${source.name} ${source.kind} ${source.date} ${source.provenance} ${source.anchor}`.toLowerCase().includes(query)));
   const expected = [sources[0]?.name, sources[1]?.name].filter(Boolean);
+  const privateSession = session?.backend === "supabase";
   const choose = async (selected) => {
     const names = selected.map((file) => file.name);
     setFiles(names);
@@ -283,8 +287,22 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
         return;
       }
       setState("server-loading");
-      setSessionMessage("Uploading and checking both files in the temporary private session.");
+      setSessionMessage(privateSession ? "Registering and storing both files in your private source session." : "Uploading and checking both files in the temporary private session.");
       try {
+        if (privateSession) {
+          if (!privateStorage || authState?.status !== "authenticated") {
+            throw new Error("Sign in again before uploading to the private source library.");
+          }
+          const results = await Promise.all(selected.map((file) => privateStorage.uploadSource({
+            sessionId: session.session_id,
+            role: file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook",
+            file,
+          })));
+          setFiles(results.map((item, index) => item?.display_name || selected[index]?.name).filter(Boolean));
+          setState("stored");
+          setSessionMessage("Files are stored in your private source session. OCR and live analysis are not connected yet; no dashboard result was created.");
+          return;
+        }
         const results = await Promise.all(selected.map((file) => uploadSource(session, file.name.toLowerCase().endsWith(".pdf") ? "report_pdf" : "workbook", file)));
         setFiles(results.map((item, index) => item?.display_name || item?.file?.display_name || selected[index]?.name).filter(Boolean));
         setSessionMessage("Files passed validation. Building the source-cited analysis…");
@@ -303,22 +321,28 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
   };
   const startPrivateSession = async () => {
     setState("connecting");
-    setSessionMessage("Starting a temporary private session…");
+    setSessionMessage(privateStorage ? "Checking your signed-in account and starting a private source session…" : "Starting a temporary private session…");
     try {
-      const next = await createSourceSession();
+      if (privateStorage && authState?.status !== "authenticated") {
+        setState("error");
+        setSessionMessage("Sign in with Google before uploading private source files.");
+        onNavigate?.("/sign-in");
+        return;
+      }
+      const next = privateStorage ? await privateStorage.createSession() : await createSourceSession();
       setSession(next);
       setState("empty");
       setFiles([]);
-      setSessionMessage("Temporary session ready. Files expire after 30 minutes idle or two hours absolute in this running process.");
+      setSessionMessage(privateStorage ? "Private source session ready. Files are owner-scoped and expire after the configured session window." : "Temporary session ready. Files expire after 30 minutes idle or two hours absolute in this running process.");
     } catch (error) {
       setState("error");
       setSessionMessage(error instanceof Error ? error.message : "A private session is not available in this deployment.");
     }
   };
   const liveRole = state === "error" ? "alert" : "status";
-  const heading = state === "ready" ? "Live analysis complete." : state === "sample" ? "Sample sources loaded." : state === "error" ? "The source set needs attention." : state === "connecting" ? "Connecting the live file service." : state === "server-loading" ? "Validating and analyzing uploaded files." : session ? "Choose the report and workbook." : "Connect the live file service.";
-  const detail = sessionMessage || (state === "error" ? "The previous dashboard remains unchanged. Correct the issue and try again." : state === "sample" ? "Sample data is clearly labelled and does not represent an uploaded analysis." : session ? "Choose one PDF financial report and one XLSX evidence workbook; analysis starts only after both pass validation." : "Connect a temporary live session to upload and analyze your own source set.");
-  const slotStatus = state === "error" ? "Needs attention" : state === "server-loading" ? "Checking" : state === "ready" ? "Analyzed" : state === "sample" ? "Sample" : "Waiting";
+  const heading = state === "ready" ? "Live analysis complete." : state === "stored" ? "Files stored. Analysis is not connected yet." : state === "sample" ? "Sample sources loaded." : state === "error" ? "The source set needs attention." : state === "connecting" ? "Connecting the live file service." : state === "server-loading" ? (privateSession ? "Storing files in the private source library." : "Validating and analyzing uploaded files.") : session ? "Choose the report and workbook." : "Connect the live file service.";
+  const detail = sessionMessage || (state === "error" ? "The previous dashboard remains unchanged. Correct the issue and try again." : state === "sample" ? "Sample data is clearly labelled and does not represent an uploaded analysis." : state === "stored" ? "Your files are private and owner-scoped. OCR and live analysis are not connected yet." : session ? (privateSession ? "Choose one PDF financial report and one XLSX evidence workbook; storage starts only after your signed-in owner is verified." : "Choose one PDF financial report and one XLSX evidence workbook; analysis starts only after both pass validation.") : "Connect a temporary live session to upload and analyze your own source set.");
+  const slotStatus = state === "error" ? "Needs attention" : state === "server-loading" ? "Checking" : state === "ready" ? "Analyzed" : state === "stored" ? "Stored" : state === "sample" ? "Sample" : "Waiting";
   return (
     <div className="route-page files-sources-page">
       <PageHeader eyebrow="Files & Sources" title="Upload, validate, analyze, then inspect every source." description="One source set feeds the dashboard, report, and Review Desk." actions={<StatusTag tone={session ? "success" : "neutral"}>{session ? "Live file session" : state === "sample" ? "Sample data" : "Live upload"}</StatusTag>} />
@@ -330,15 +354,15 @@ function FilesPage({ data = productFixture, onNavigate, onOpenSource, onFixtureR
           <p>{detail}</p>
         </div>
         <input ref={inputRef} className="visually-hidden" tabIndex="-1" aria-label="Select financial report PDF and evidence workbook" type="file" multiple accept=".pdf,.xlsx" onChange={(event) => choose([...event.target.files])} />
-        {state === "server-loading" && <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>Upload → validate → analyze</strong><small>The dashboard and report update only after the server returns a complete source-cited analysis.</small></div>}
+        {state === "server-loading" && <div className="source-validation" role="status"><span className="loader" aria-hidden="true" /><strong>{privateSession ? "Register → store → await processing" : "Upload → validate → analyze"}</strong><small>{privateSession ? "The private adapter stores bytes and metadata only. No OCR or dashboard analysis is being claimed." : "The dashboard and report update only after the server returns a complete source-cited analysis."}</small></div>}
         <div className="file-slot-grid" aria-label="Required review files">
           {[{ role: "report_pdf", label: "Financial report", kind: "PDF", name: files.find((name) => name.toLowerCase().endsWith(".pdf")) || expected.find((name) => name.toLowerCase().endsWith(".pdf")) }, { role: "workbook", label: "Evidence workbook", kind: "XLSX", name: files.find((name) => name.toLowerCase().endsWith(".xlsx")) || expected.find((name) => name.toLowerCase().endsWith(".xlsx")) }].map((slot) => <article className="file-slot" key={slot.role}><span className="file-kind">{slot.kind === "PDF" ? <FilePdf size={18} /> : <Table size={18} />}{slot.kind}</span><div><h3>{slot.label}</h3><p>{slot.name || "No file selected"}</p></div><StatusTag tone={state === "ready" ? "success" : state === "error" ? "warning" : "neutral"}>{slotStatus}</StatusTag></article>)}
         </div>
         <div className="upload-actions">
-          <button className="button primary" type="button" disabled={state === "server-loading" || state === "connecting"} onClick={() => state === "ready" ? onNavigate("/") : session ? inputRef.current?.click() : startPrivateSession()}>{state === "connecting" ? "Connecting…" : state === "server-loading" ? "Analyzing uploaded files…" : state === "ready" ? "View updated dashboard" : session ? "Select files to analyze" : "Connect live file service"}</button>
+          <button className="button primary" type="button" disabled={state === "server-loading" || state === "connecting"} onClick={() => state === "ready" ? onNavigate("/") : state === "stored" ? onNavigate("/files#sources") : session ? inputRef.current?.click() : startPrivateSession()}>{state === "connecting" ? "Connecting…" : state === "server-loading" ? (privateSession ? "Storing files…" : "Analyzing uploaded files…") : state === "ready" ? "View updated dashboard" : state === "stored" ? "View source library" : session ? "Select files to analyze" : "Connect live file service"}</button>
           <button className="button secondary" type="button" disabled={state === "server-loading" || state === "connecting" || expected.length !== 2} onClick={() => { setSession(null); setSessionMessage(""); setFiles(expected); setState("sample"); onFixtureReady?.(); }}>Try sample data</button>
         </div>
-        <details className="privacy-details"><summary>{state === "sample" ? "About sample data" : "Privacy and retention"}</summary><p>{state === "sample" ? "The sample option restores MagicFin’s preloaded, human-checked dataset. It never reads or uploads files from your device and is not presented as a live analysis." : session ? "This temporary session uploads only the files you choose. It expires after 30 minutes idle or two hours absolute; deletion guarantees require a server receipt." : "The live service creates a temporary session before the file picker opens. Use it only for documents you are authorized to process."}</p></details>
+        <details className="privacy-details"><summary>{state === "sample" ? "About sample data" : "Privacy and retention"}</summary><p>{state === "sample" ? "The sample option restores MagicFin’s preloaded, human-checked dataset. It never reads or uploads files from your device and is not presented as a live analysis." : privateSession ? "Selected bytes are stored only in the private owner-scoped Supabase bucket through the authenticated adapter. This frontend does not run OCR or claim a completed analysis." : session ? "This temporary session uploads only the files you choose. It expires after 30 minutes idle or two hours absolute; deletion guarantees require a server receipt." : "The live service creates a temporary session before the file picker opens. Use it only for documents you are authorized to process."}</p></details>
       </section>
       <section className="source-library-section" id="sources" tabIndex="-1" aria-labelledby="source-library-title">
         <div className="section-heading"><div><p className="eyebrow">2 · Sources</p><h2 id="source-library-title">Evidence with a visible address.</h2><p>Search each validated source by filename, period, provenance, or exact anchor.</p></div><StatusTag tone="success">{visibleSources.length} of {sources.length} sources</StatusTag></div>
@@ -422,7 +446,20 @@ function ReportsPage({ data, onNavigate }) {
   );
 }
 
-function ProfilePage() { return <div className="route-page"><PageHeader eyebrow="Profile" title="A local demo identity." description="No account exists in this frontend prototype." /><section className="settings-card"><div className="profile-mark" aria-hidden="true">DR</div><div><h2>Demo reviewer</h2><p>Local fixture workspace · not signed in</p></div><StatusTag>Not persisted</StatusTag></section><section className="route-state compact"><UserCircle size={28} /><h2>Profile syncing is unavailable.</h2><p>Connect a real authentication and profile service before enabling saved names, teams, or preferences.</p></section></div>; }
+function ProfilePage({ authState, onNavigate }) {
+  const authenticated = authState?.status === "authenticated";
+  const initials = (authState?.displayName || authState?.email || "MF")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+  if (!authenticated) {
+    return <div className="route-page"><PageHeader eyebrow="Profile" title="A local demo identity." description="No verified account is active in this browser." /><section className="settings-card"><div className="profile-mark" aria-hidden="true">DR</div><div><h2>Demo reviewer</h2><p>Local fixture workspace · not signed in</p></div><StatusTag>Not persisted</StatusTag></section><section className="route-state compact"><UserCircle size={28} /><h2>Profile syncing is unavailable.</h2><p>{authState?.status === "loading" ? "Checking the saved Google session…" : "Sign in with Google to show the verified account used for private source storage."}</p>{authState?.status !== "loading" && <button className="button primary" type="button" onClick={() => onNavigate("/sign-in")}>Continue with Google</button>}</section></div>;
+  }
+  return <div className="route-page"><PageHeader eyebrow="Profile" title="Your verified MagicFin profile." description="This view is derived from the current Supabase session; no access or refresh token is displayed." actions={<StatusTag tone="success">Authenticated</StatusTag>} /><section className="settings-card"><div className="profile-mark" aria-hidden="true">{initials || "MF"}</div><div><h2>{authState.displayName || authState.email || "Verified account"}</h2><p>{authState.email || "Verified Supabase account"}</p></div><StatusTag tone="success">Signed in</StatusTag></section><section className="route-state compact"><UserCircle size={28} /><h2>Private workspace ready.</h2><p>Private Files & Sources uploads are owner-scoped to this verified account. OCR and live analysis remain separate processing steps.</p><dl className="auth-session"><div><dt>Session owner</dt><dd>{authState.ownerId}</dd></div><div><dt>Storage scope</dt><dd>Current browser session</dd></div></dl><button className="button secondary" type="button" onClick={() => onNavigate("/files")}>Open Files & Sources</button></section></div>;
+}
 
 function SettingsPage({ reducedMotion, compactSources, onReducedMotion, onCompactSources, initialProviderMode = "not_configured" }) {
   const [providerMode, setProviderMode] = useState(initialProviderMode);
@@ -436,6 +473,7 @@ function SettingsPage({ reducedMotion, compactSources, onReducedMotion, onCompac
 
 const authMessages = {
   AUTH_CANCELLED: "Google sign-in was cancelled. Nothing changed in this browser.",
+  AUTH_CALLBACK_INVALID: "The sign-in callback was invalid or expired. Start Google sign-in again.",
   AUTH_CONFIGURATION_INVALID: "The public sign-in configuration is invalid. The deployment owner must correct it.",
   AUTH_EXCHANGE_FAILED: "Google returned, but the session could not be verified. Try again.",
   AUTH_SESSION_INVALID: "The saved session could not be verified. Sign in again.",
@@ -509,28 +547,52 @@ function AssistantChart({ data, onOpenCitation }) {
   return focused ? <div className="focused-chart-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setFocused(false); }}>{card}</div> : card;
 }
 
-function AssistantPanel({ open, onClose, onOpenCitation, returnRef, data, initialMode = "verified_demo", sourceOpen = false }) {
+function AssistantPanel({ open, onClose, onOpenCitation, returnRef, data, initialMode = "verified_demo", sourceOpen = false, assistant, authState }) {
   const panelRef = useRef(null);
   const conversationRef = useRef(null);
   const [mode, setMode] = useState(initialMode);
   const [suggestionId, setSuggestionId] = useState("growth");
+  const [liveQuestion, setLiveQuestion] = useState("");
+  const [liveState, setLiveState] = useState({ mode: "idle", message: "" });
   const response = useMemo(() => getAssistantAdapter(mode, data), [mode, data]);
   const selectedSuggestion = response.suggestions?.find((item) => item.id === suggestionId);
   const answer = selectedSuggestion ? { ...response, ...selectedSuggestion } : response;
+  const context = data?.assistantContext;
+  const liveAvailable = Boolean(
+    assistant &&
+    authState?.status === "authenticated" &&
+    context?.sessionId &&
+    Array.isArray(context?.sourceIds) &&
+    context.sourceIds.length,
+  );
+  const submitLiveQuestion = async (event) => {
+    event.preventDefault();
+    if (!liveAvailable || !liveQuestion.trim()) return;
+    setLiveState({ mode: "loading", message: "Checking the cited evidence…" });
+    try {
+      const result = await assistant.request({ question: liveQuestion, sessionId: context.sessionId, sourceIds: context.sourceIds });
+      if (result.state === "completed") setLiveState({ mode: "success", message: "Live assistant returned a cited proposal. Values remain resolved by the deterministic evidence path." });
+      else if (result.state === "offline") setLiveState({ mode: "offline", message: "The live assistant is temporarily offline. No provider result was used." });
+      else if (result.state === "not_configured") setLiveState({ mode: "not_configured", message: "The live assistant is not configured for this deployment." });
+      else setLiveState({ mode: "error", message: "The live assistant returned an unusable response. Try again later." });
+    } catch (error) {
+      setLiveState({ mode: "error", message: error?.reasonCode === "ASSISTANT_REQUEST_INVALID" ? "This source context is not ready for live questions." : "The live assistant could not be reached. No provider result was used." });
+    }
+  };
   useDismissible(open, onClose, returnRef, panelRef);
   useEffect(() => {
     if (!open || !conversationRef.current) return;
     conversationRef.current.scrollTop = conversationRef.current.scrollHeight;
   }, [open, suggestionId, mode]);
   if (!open) return null;
-  return <aside ref={panelRef} className="assistant-panel" role="dialog" aria-modal={sourceOpen ? undefined : "true"} aria-hidden={sourceOpen ? "true" : undefined} inert={sourceOpen} aria-labelledby="assistant-title" tabIndex="-1"><div className="panel-title"><div><p className="eyebrow">Magic Assistant</p><h2 id="assistant-title">Ask the fixture, inspect the evidence.</h2></div><button type="button" onClick={onClose} aria-label="Close Magic Assistant"><X size={20} /></button></div><StatusTag tone={mode === "verified_demo" ? "success" : mode === "error" || mode === "offline" ? "warning" : "neutral"}>{response.notice}</StatusTag>{mode === "verified_demo" ? <div ref={conversationRef} className="assistant-conversation"><section className="suggested-questions" aria-labelledby="suggested-title"><h3 id="suggested-title">Try a verified demo question</h3>{response.suggestions.map((item) => <button key={item.id} type="button" aria-pressed={suggestionId === item.id} onClick={() => setSuggestionId(item.id)}>{item.label}</button>)}</section><div className="user-message"><span>Selected question</span><p>{answer.label || answer.prompt}</p></div><div className="assistant-message" aria-live="polite"><div className="answer-block calculated"><span>Calculated result</span><strong>{answer.calculated}</strong><small>{answer.formula}</small></div><div className="answer-block"><span>Assistant analysis</span><p>{answer.analysis}</p></div><div className="assistant-source-pills" aria-label="Response sources">{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={13} />{citation.label}</button>)}</div><AssistantChart data={data} onOpenCitation={onOpenCitation} /><div className="assistant-citations"><div><span>Cited sources</span><small>{response.citations.length} linked anchors</small></div>{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={17} /><span><strong>{citation.label}</strong><small>{citation.detail}</small></span><CaretRight size={15} /></button>)}</div></div></div> : <section className="assistant-state" role={mode === "error" ? "alert" : "status"} aria-busy={mode === "loading"}>{mode === "loading" ? <span className="loader" aria-hidden="true" /> : <Warning size={28} />}<h3>{response.notice}</h3><p>{response.analysis}</p>{mode === "error" && <button className="button secondary" type="button" onClick={() => setMode("verified_demo")}>Retry fixture demo</button>}</section>}<div className="assistant-composer unavailable"><strong>Free-form questions unavailable</strong><p>Connect a server-side model provider to enable typed questions. No browser API key is used.</p><div><textarea id="assistant-input" aria-label="Free-form questions unavailable" rows="2" placeholder="Provider not configured" disabled onInput={(event) => { event.currentTarget.style.height = "auto"; event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`; }} /><button type="button" disabled aria-label="Send message unavailable"><PaperPlaneTilt size={18} /></button></div><small>Preview provider boundary states:</small><div className="state-switcher" aria-label="Assistant demo states">{["verified_demo", "not_configured", "offline", "loading", "error"].map((item) => <button type="button" key={item} aria-pressed={mode === item} onClick={() => setMode(item)}>{item.replaceAll("_", " ")}</button>)}</div></div></aside>;
+  return <aside ref={panelRef} className="assistant-panel" role="dialog" aria-modal={sourceOpen ? undefined : "true"} aria-hidden={sourceOpen ? "true" : undefined} inert={sourceOpen} aria-labelledby="assistant-title" tabIndex="-1"><div className="panel-title"><div><p className="eyebrow">Magic Assistant</p><h2 id="assistant-title">Ask the fixture, inspect the evidence.</h2></div><button type="button" onClick={onClose} aria-label="Close Magic Assistant"><X size={20} /></button></div><StatusTag tone={mode === "verified_demo" ? "success" : mode === "error" || mode === "offline" ? "warning" : "neutral"}>{response.notice}</StatusTag>{mode === "verified_demo" ? <div ref={conversationRef} className="assistant-conversation"><section className="suggested-questions" aria-labelledby="suggested-title"><h3 id="suggested-title">Try a verified demo question</h3>{response.suggestions.map((item) => <button key={item.id} type="button" aria-pressed={suggestionId === item.id} onClick={() => setSuggestionId(item.id)}>{item.label}</button>)}</section><div className="user-message"><span>Selected question</span><p>{answer.label || answer.prompt}</p></div><div className="assistant-message" aria-live="polite"><div className="answer-block calculated"><span>Calculated result</span><strong>{answer.calculated}</strong><small>{answer.formula}</small></div><div className="answer-block"><span>Assistant analysis</span><p>{answer.analysis}</p></div><div className="assistant-source-pills" aria-label="Response sources">{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={13} />{citation.label}</button>)}</div><AssistantChart data={data} onOpenCitation={onOpenCitation} /><div className="assistant-citations"><div><span>Cited sources</span><small>{response.citations.length} linked anchors</small></div>{response.citations.map((citation) => <button key={citation.id} type="button" onClick={(event) => onOpenCitation(citation, event.currentTarget)}><Files size={17} /><span><strong>{citation.label}</strong><small>{citation.detail}</small></span><CaretRight size={15} /></button>)}</div></div></div> : <section className="assistant-state" role={mode === "error" ? "alert" : "status"} aria-busy={mode === "loading"}>{mode === "loading" ? <span className="loader" aria-hidden="true" /> : <Warning size={28} />}<h3>{response.notice}</h3><p>{response.analysis}</p>{mode === "error" && <button className="button secondary" type="button" onClick={() => setMode("verified_demo")}>Retry fixture demo</button>}</section>}<form className={`assistant-composer ${liveAvailable ? "" : "unavailable"}`} onSubmit={submitLiveQuestion}><strong>{liveAvailable ? "Ask the live assistant" : "Free-form questions unavailable"}</strong><p>{liveAvailable ? "Questions are sent through the authenticated Supabase function; no browser provider key is used." : assistant && authState?.status === "authenticated" ? "The live assistant is not configured for this source session yet." : "Connect a server-side model provider to enable typed questions. No browser API key is used."}</p><div><textarea id="assistant-input" aria-label={liveAvailable ? "Ask the live assistant" : "Free-form questions unavailable"} rows="2" placeholder={liveAvailable ? "Ask about the cited source set" : "Provider not configured"} value={liveQuestion} disabled={!liveAvailable || liveState.mode === "loading"} onChange={(event) => setLiveQuestion(event.target.value)} /><button type="submit" disabled={!liveAvailable || liveState.mode === "loading" || !liveQuestion.trim()} aria-label={liveAvailable ? "Send question" : "Send message unavailable"}><PaperPlaneTilt size={18} /></button></div>{liveState.message && <small role={liveState.mode === "error" ? "alert" : "status"}>{liveState.message}</small>}<small>Preview provider boundary states:</small><div className="state-switcher" aria-label="Assistant demo states">{["verified_demo", "not_configured", "offline", "loading", "error"].map((item) => <button type="button" key={item} aria-pressed={mode === item} onClick={() => setMode(item)}>{item.replaceAll("_", " ")}</button>)}</div></form></aside>;
 }
 
 function DeletedSessionState({ onRestore }) {
   return <section className="route-state receipt" aria-live="polite" tabIndex="-1"><span className="state-icon success"><Check size={24} weight="bold" aria-hidden="true" /></span><p className="eyebrow supported-text">Deletion receipt</p><h1>Demo session cleared.</h1><p>The Company, Sources, History, Review Desk, and Reports fixture views are cleared for this browser session. No server data existed.</p><button autoFocus className="button primary" type="button" onClick={onRestore}>Restore verified fixture</button></section>;
 }
 
-function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData, authState, authReturnTo, onAuthSignIn, onAuthSignOut }) {
+function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData, authState, authReturnTo, onAuthSignIn, onAuthSignOut, privateStorage, assistant }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [source, setSource] = useState(null);
   const [sessionCleared, setSessionCleared] = useState(false);
@@ -550,11 +612,11 @@ function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistan
   const pages = {
     "/": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} />,
     "/company": <CompanyPage data={data} onNavigate={onNavigate} onOpenAssistant={openAssistant} onOpenSource={openSource} />,
-    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} onFixtureReady={() => { setAnalysisData(productData); setSessionCleared(false); }} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} />,
+    "/files": <FilesPage data={data} onNavigate={onNavigate} onOpenSource={openSource} authState={authState} privateStorage={privateStorage} onFixtureReady={() => { setAnalysisData(productData); setSessionCleared(false); }} onAnalysisReady={(analysis) => { setAnalysisData(analysis); setSessionCleared(false); }} />,
     "/history": <HistoryPage data={data} onNavigate={onNavigate} />,
     "/review": <ReviewDesk onClearSession={() => setSessionCleared(true)} productData={data} />,
     "/reports": <ReportsPage data={data} onNavigate={onNavigate} />,
-    "/profile": <ProfilePage />,
+    "/profile": <ProfilePage authState={authState} onNavigate={onNavigate} />,
     "/settings": <SettingsPage reducedMotion={reducedMotion} compactSources={compactSources} onReducedMotion={setReducedMotion} onCompactSources={setCompactSources} initialProviderMode={initialProviderMode} />,
     "/sign-in": <SignInPage authState={authState} returnTo={authReturnTo} onSignIn={onAuthSignIn} onSignOut={onAuthSignOut} />,
     "/auth/callback": <AuthCallbackPage />,
@@ -565,7 +627,7 @@ function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistan
   const content = sessionCleared && protectedRoutes.has(route) ? <DeletedSessionState onRestore={restoreFixture} /> : pages[route] || <NotFoundPage onNavigate={onNavigate} />;
   const sourceOpen = Boolean(source);
   const navigateFromCitation = (destination) => { setAssistantOpen(false); onNavigate(destination); };
-  return <div className={`product-shell ${assistantOpen ? "assistant-is-open" : ""} ${reducedMotion ? "reduced-motion" : ""} ${compactSources ? "compact-sources" : ""}`}><a className="skip-link" href="#main-content">Skip to content</a><MobileHeader backgroundInert={mobileOpen || assistantOpen || sourceOpen} menuButtonRef={mobileMenuButtonRef} onOpenNav={() => setMobileOpen(true)} onOpenAssistant={openAssistant} /><Sidebar backgroundInert={assistantOpen || sourceOpen} panelRef={mobilePanelRef} route={route} onNavigate={onNavigate} onOpenAssistant={openAssistant} assistantButtonRef={assistantButtonRef} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />{mobileOpen && <button className="nav-scrim" type="button" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}<main id="main-content" className="workspace" tabIndex="-1" aria-label={routeTitle(route)} inert={mobileOpen || assistantOpen || sourceOpen} aria-hidden={mobileOpen || assistantOpen || sourceOpen ? "true" : undefined}><div className="route-transition" key={route}>{content}</div></main><AssistantPanel data={data} open={assistantOpen} onClose={() => { if (!source) setAssistantOpen(false); }} onOpenCitation={openSource} returnRef={assistantReturnRef} initialMode={assistantMode} sourceOpen={sourceOpen} /><CitationDrawer source={source} onClose={() => setSource(null)} onNavigate={navigateFromCitation} returnRef={sourceReturnRef} /></div>;
+  return <div className={`product-shell ${assistantOpen ? "assistant-is-open" : ""} ${reducedMotion ? "reduced-motion" : ""} ${compactSources ? "compact-sources" : ""}`}><a className="skip-link" href="#main-content">Skip to content</a><MobileHeader backgroundInert={mobileOpen || assistantOpen || sourceOpen} menuButtonRef={mobileMenuButtonRef} onOpenNav={() => setMobileOpen(true)} onOpenAssistant={openAssistant} /><Sidebar backgroundInert={assistantOpen || sourceOpen} panelRef={mobilePanelRef} route={route} onNavigate={onNavigate} onOpenAssistant={openAssistant} assistantButtonRef={assistantButtonRef} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} authState={authState} />{mobileOpen && <button className="nav-scrim" type="button" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}<main id="main-content" className="workspace" tabIndex="-1" aria-label={routeTitle(route)} inert={mobileOpen || assistantOpen || sourceOpen} aria-hidden={mobileOpen || assistantOpen || sourceOpen ? "true" : undefined}><div className="route-transition" key={route}>{content}</div></main><AssistantPanel data={data} authState={authState} assistant={assistant} open={assistantOpen} onClose={() => { if (!source) setAssistantOpen(false); }} onOpenCitation={openSource} returnRef={assistantReturnRef} initialMode={assistantMode} sourceOpen={sourceOpen} /><CitationDrawer source={source} onClose={() => setSource(null)} onNavigate={navigateFromCitation} returnRef={sourceReturnRef} /></div>;
 }
 
 export function App({ initialRoute, initialAssistantOpen = false, initialAssistantMode = "verified_demo", initialProviderMode = "not_configured", initialProductData = productFixture, authHandoffFactory = createMagicFinAuthHandoff }) {
@@ -576,6 +638,7 @@ export function App({ initialRoute, initialAssistantOpen = false, initialAssista
   const authHandoff = authHandoffRef.current;
   const [authState, setAuthState] = useState(authHandoff.auth.state);
   const authReturnToRef = useRef("/");
+  const handledCallbackRef = useRef("");
   useEffect(() => {
     const unsubscribe = authHandoff.auth.subscribe(setAuthState);
     void authHandoff.auth.initialize();
@@ -586,8 +649,17 @@ export function App({ initialRoute, initialAssistantOpen = false, initialAssista
   }, [route]);
   useEffect(() => {
     if (route !== "/auth/callback") return undefined;
+    const callbackUrl = window.location.href;
+    if (handledCallbackRef.current === callbackUrl) return undefined;
+    handledCallbackRef.current = callbackUrl;
     let active = true;
-    void authHandoff.handleCallback(window.location.href).then(({ returnTo }) => { if (active) navigate(returnTo); });
+    void authHandoff.handleCallback(callbackUrl).then(({ state, returnTo }) => {
+      if (!active) return;
+      setAuthState(state);
+      navigate(returnTo);
+    }).catch(() => {
+      if (active) setAuthState({ status: "error", reasonCode: "AUTH_CALLBACK_INVALID" });
+    });
     return () => { active = false; };
   }, [authHandoff, route]);
   useEffect(() => {
@@ -601,5 +673,5 @@ export function App({ initialRoute, initialAssistantOpen = false, initialAssista
     }, 0);
     return () => window.clearTimeout(timer);
   }, [route]);
-  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} authState={authState} authReturnTo={authReturnToRef.current} onAuthSignIn={() => authHandoff.auth.signInWithGoogle(authReturnToRef.current)} onAuthSignOut={() => authHandoff.auth.signOut()} />;
+  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} authState={authState} authReturnTo={authReturnToRef.current} onAuthSignIn={() => authHandoff.auth.signInWithGoogle(authReturnToRef.current)} onAuthSignOut={() => authHandoff.auth.signOut()} privateStorage={authHandoff.privateStorage} assistant={authHandoff.assistant} />;
 }

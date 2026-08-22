@@ -6,7 +6,7 @@ import { MAX_REVIEWED_REPORT_PDF_BYTES, requestReviewedPdf } from "./product-con
 
 const originalViewport = { width: window.innerWidth, height: window.innerHeight };
 
-function fakeAuthHandoff(initialState, callbackReturnTo = "/") {
+function fakeAuthHandoff(initialState, callbackReturnTo = "/", privateStorage = null) {
   let state = initialState;
   const listeners = new Set();
   const auth = {
@@ -18,7 +18,7 @@ function fakeAuthHandoff(initialState, callbackReturnTo = "/") {
     destroy: vi.fn(),
   };
   return {
-    handoff: { auth, config: { configured: initialState.configured ?? true }, privateStorage: null, handleCallback: vi.fn().mockResolvedValue({ state, returnTo: callbackReturnTo }) },
+    handoff: { auth, config: { configured: initialState.configured ?? true }, privateStorage, handleCallback: vi.fn().mockResolvedValue({ state, returnTo: callbackReturnTo }) },
     emit(nextState) { state = nextState; auth.state = nextState; for (const listener of listeners) listener(nextState); },
   };
 }
@@ -123,6 +123,50 @@ describe("MagicFin product shell", () => {
     await waitFor(() => expect(fake.handoff.handleCallback).toHaveBeenCalled());
     await waitFor(() => expect(window.location.pathname).toBe("/review"));
     expect(screen.getByRole("heading", { name: /one claim. every receipt/i })).toBeInTheDocument();
+  });
+
+  it("applies the callback's authenticated state before navigating to the visible account route", async () => {
+    const ownerId = "10000000-0000-4000-8000-000000000001";
+    const fake = fakeAuthHandoff({ status: "loading" }, "/sign-in");
+    fake.handoff.handleCallback.mockResolvedValueOnce({
+      state: { status: "authenticated", ownerId, email: "ada@example.com", displayName: "Ada Lovelace" },
+      returnTo: "/sign-in",
+    });
+    render(<App initialRoute="/auth/callback" authHandoffFactory={() => fake.handoff} />);
+    await waitFor(() => expect(window.location.pathname).toBe("/sign-in"));
+    expect(screen.getByRole("heading", { name: /signed in to magicfin/i })).toBeInTheDocument();
+    expect(screen.getByText(ownerId)).toBeInTheDocument();
+  });
+
+  it("shows the verified profile state instead of the local demo identity", () => {
+    const ownerId = "10000000-0000-4000-8000-000000000001";
+    const fake = fakeAuthHandoff({ status: "authenticated", ownerId, email: "ada@example.com", displayName: "Ada Lovelace" });
+    render(<App initialRoute="/profile" authHandoffFactory={() => fake.handoff} />);
+    expect(screen.getByRole("heading", { name: /verified magicfin profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).toBeInTheDocument();
+    expect(screen.getByText("Verified session")).toBeInTheDocument();
+    expect(screen.getByText(/private files & sources uploads are owner-scoped/i)).toBeInTheDocument();
+  });
+
+  it("uses the authenticated RPC and private-storage handoff without claiming OCR", async () => {
+    const user = userEvent.setup();
+    const ownerId = "10000000-0000-4000-8000-000000000001";
+    const privateStorage = {
+      createSession: vi.fn().mockResolvedValue({ backend: "supabase", session_id: "11000000-0000-4000-8000-000000000001" }),
+      uploadSource: vi.fn().mockImplementation(({ file }) => Promise.resolve({ display_name: file.name })),
+    };
+    const fake = fakeAuthHandoff({ status: "authenticated", ownerId }, "/", privateStorage);
+    render(<App initialRoute="/files" authHandoffFactory={() => fake.handoff} />);
+    await user.click(screen.getByRole("button", { name: /connect live file service/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /select files to analyze/i })).toBeEnabled());
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [
+      new File(["%PDF"], "private-report.pdf", { type: "application/pdf" }),
+      new File(["workbook"], "private-workbook.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    ] } });
+    await waitFor(() => expect(screen.getByRole("heading", { name: /files stored. analysis is not connected yet/i })).toBeInTheDocument());
+    expect(privateStorage.createSession).toHaveBeenCalledOnce();
+    expect(privateStorage.uploadSource).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(/ocr and live analysis are not connected yet/i)).toBeInTheDocument();
   });
 
   it("sends the Home analysis action to the real uploader without simulating completion", async () => {

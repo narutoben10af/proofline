@@ -23,7 +23,7 @@ export const AUTH_REASON = Object.freeze({
  * {status: "error", reasonCode: string} |
  * {status: "cancelled", reasonCode: "AUTH_CANCELLED"} |
  * {status: "unauthenticated", configured: boolean, reasonCode?: string} |
- * {status: "authenticated", ownerId: string}} AuthState
+ * {status: "authenticated", ownerId: string, email?: string, displayName?: string}} AuthState
  */
 
 export class AuthBoundaryError extends Error {
