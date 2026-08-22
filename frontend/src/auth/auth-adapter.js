@@ -194,7 +194,7 @@ export class SupabaseAuthAdapter {
     if (state.status !== AUTH_STATUS.AUTHENTICATED) {
       throw new AuthBoundaryError(AUTH_REASON.AUTH_REQUIRED);
     }
-    return { ownerId: state.ownerId };
+    return { ownerId: state.ownerId, accessToken: data.session.access_token };
   }
 
   destroy() {

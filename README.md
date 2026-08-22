@@ -41,7 +41,14 @@ preview/download and future parser/provider paths receive only the derivative. S
 removes both copies. Catalog JavaScript/Launch/external-navigation actions that are not isolated
 behind a stripped interactive surface remain rejected.
 
-A standalone, disabled-by-default Supabase Google Auth handoff is documented in
+An authenticated Supabase upload path now verifies user JWTs through Supabase Auth, uses
+owner-derived session/document RPCs and private Storage, revalidates stored bytes, persists cited
+normalized evidence plus the returned analysis snapshot, and never places a secret/service-role key
+in the browser. It activates only with complete server configuration and applied migrations; the
+process-local route remains the local default. See the [live pipeline and release gate](docs/live-upload-pipeline.md)
+and [guarded setup path](docs/supabase-persistence-setup.md).
+
+A configuration-gated Supabase Google Auth handoff is documented in
 [`docs/supabase-google-auth.md`](docs/supabase-google-auth.md). It does not alter the product shell,
 enable a provider, or add credentials; public previews truthfully report sign-in as not configured.
 
@@ -141,10 +148,14 @@ or unsupported forecast assertions.
 - Only the four Tier 0 metrics are accepted. Arithmetic uses Python `Decimal` and typed allowlisted
   plans; no model-generated code or expressions are executed.
 - Fixed prototype tolerances have not yet been validated against the final issuer fixtures.
-- There is no database, durable retention, bundled OCR runtime, hosted model call, authentication, or production
-  privacy/compliance claim. The separate temporary Source Library accepts narrowly validated PDF/XLSX
-  bytes in one running process; its explicit `/api/sessions/{session_id}/analysis` boundary runs
-  only the local, reviewed digital-text/XLSX path and never sends uploaded material to a provider.
+- The authenticated path requires an explicitly configured Supabase project, applied migrations,
+  deployed API container, matching frontend build variables, and verified user session. This
+  repository does not claim that those deployment steps are complete. The separate process-local
+  Source Library remains a development-only backend boundary, but the Sites upload interface does
+  not fall back to it when authenticated upload is unavailable.
+- There is no durable deletion worker, bundled OCR runtime, automatic hosted-model call, or production
+  privacy/compliance claim. The authenticated and process-local analysis routes run only the reviewed
+  native-text PDF/XLSX path and never silently replace a failed upload with fixture data.
 - Automatic report-bundle publication, narrative claim extraction beyond the small explicit PDF claim
   grammar, arbitrary PDF-table reconstruction, and public upload-normalized contract versioning remain
   future work. Unsupported, scanned, formula-bearing, or ambiguous uploads fail closed for review.

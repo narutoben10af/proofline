@@ -140,12 +140,21 @@ function sourceAnchor(source) {
   return source.kind === "pdf" ? `Page ${source.page}` : `${source.sheet} ${source.cell}`;
 }
 
+function formatMetricValue(metricId, rawValue) {
+  if (rawValue == null) return "Unavailable";
+  const presentation = metricPresentation[metricId] || { suffix: "" };
+  const number = Number(rawValue);
+  if (!Number.isFinite(number)) return String(rawValue);
+  const isPercent = ["revenue_growth_yoy", "operating_margin", "fcf_margin"].includes(metricId);
+  const displayNumber = isPercent && Math.abs(number) <= 1 ? number * 100 : number;
+  return `${displayNumber.toLocaleString(undefined, { maximumFractionDigits: 2 })}${presentation.suffix}`;
+}
+
 function displayMetric(result) {
   const presentation = metricPresentation[result.metric_id] || { id: result.metric_id, label: result.metric_id, unit: "Reported unit", suffix: "" };
-  const number = Number(result.result);
   return {
     ...presentation,
-    value: result.result == null ? "Unavailable" : `${Number.isFinite(number) ? number.toLocaleString(undefined, { maximumFractionDigits: 2 }) : result.result}${presentation.suffix}`,
+    value: formatMetricValue(result.metric_id, result.result),
     delta: result.exceptional_state ? "Needs attention" : "Calculated",
     deltaLabel: result.exceptional_state || "deterministic backend",
     tone: result.exceptional_state ? "caution" : "positive",
@@ -189,8 +198,8 @@ export function adaptAnalysisResponse(response) {
   const review = {
     meta: { entity: issuer, period: latestEnd, registryVersion: response.metric_registry_version },
     summary: { supported: findings.filter((item) => item.classification === "supported").length, uncertain: findings.filter((item) => item.classification === "uncertain").length, contradicted: findings.filter((item) => item.classification === "contradicted").length },
-    claim: { text: claim?.text || "No narrative claim supplied", value: claim?.asserted_value == null ? "Direction-only claim" : String(claim.asserted_value), source: sourceAnchor(spanById.get(claim?.source_span_id)?.source) },
-    result: { status: classification, value: result?.result == null ? "Unavailable" : String(result.result), difference: classification === "supported" ? "Within tolerance" : "Outside tolerance", rationale: finding.rationale, tolerance: finding.tolerance == null ? "Policy-defined" : String(finding.tolerance) },
+    claim: { text: claim?.text || "No narrative claim supplied", value: claim?.asserted_value == null ? "Direction-only claim" : formatMetricValue(claim.metric_id, claim.asserted_value), source: sourceAnchor(spanById.get(claim?.source_span_id)?.source) },
+    result: { status: classification, value: formatMetricValue(result?.metric_id, result?.result), difference: classification === "supported" ? "Within tolerance" : "Outside tolerance", rationale: finding.rationale, tolerance: finding.tolerance == null ? "Policy-defined" : String(finding.tolerance) },
     inputs: reviewInputs.length === 2 ? reviewInputs : [{ period: latestEnd, value: "Unavailable", cell: "Unavailable" }, { period: latestEnd, value: "Unavailable", cell: "Unavailable" }],
     formula: result?.formula_id || "Allowlisted deterministic formula",
   };
@@ -212,7 +221,7 @@ export function adaptAnalysisResponse(response) {
     analysisSignals: findings.map((item) => ({ label: item.classification, value: item.id, detail: item.rationale })),
     managementQuestions: findings.map((item) => item.suggested_investigation).filter(Boolean),
     history: [{ id: findings[0].id, label: `${latestEnd} analysis`, time: "Current session", status: classification, route: "/review" }],
-    assistant: { ...productFixture.assistant, mode: "validated_analysis", analysis: finding.rationale, citations, suggestions: [{ id: "finding", label: "What did the deterministic analysis find?", calculated: result?.result == null ? "Unavailable" : String(result.result), formula: result?.formula_id, analysis: finding.rationale }], chartProposals: [], chartSpecs: response.chart_specs || [] },
+    assistant: { ...productFixture.assistant, mode: "validated_analysis", analysis: finding.rationale, citations, suggestions: [{ id: "finding", label: "What did the deterministic analysis find?", calculated: formatMetricValue(result?.metric_id, result?.result), formula: result?.formula_id, analysis: finding.rationale }], chartProposals: [], chartSpecs: response.chart_specs || [] },
     review,
     analysisResponse: response,
     reportBundle: response.report_bundle,
@@ -330,10 +339,10 @@ export function buildReviewedReport(response = productFixture) {
     reviewStatus: "human_review_required",
     finding: response.review,
     limitations: [
-      "Verified demo fixture only",
-      "No issuer files are bundled or uploaded",
-      "Assistant analysis is scripted, not a live provider response",
-      "Economic context is not evidence of cause",
+      "Authenticated upload-derived analysis; human review is required",
+      "Only cited native-text PDF and structural XLSX evidence was used",
+      "No causal explanation, forecast, or investment recommendation is asserted",
+      "Live PDF export requires a separately validated server-side report bundle",
     ],
   };
 }

@@ -7,8 +7,9 @@ export const MAX_TOTAL_POINTS = 24;
 
 // These prefixes and character bounds mirror the dynamic upload identifiers produced by
 // SourceLibraryStore. They are opaque capabilities/scopes, not database UUIDs.
-const SESSION_ID_PATTERN = /^src-[A-Za-z0-9_-]{32}$/;
-const SOURCE_ID_PATTERN = /^file-[A-Za-z0-9_-]{24}$/;
+const UUID_TEXT = "[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
+const SESSION_ID_PATTERN = new RegExp(`^(?:src-[A-Za-z0-9_-]{32}|${UUID_TEXT})$`, "i");
+const SOURCE_ID_PATTERN = new RegExp(`^(?:file-[A-Za-z0-9_-]{24}|${UUID_TEXT})$`, "i");
 const OBSERVATION_ID_PATTERN = /^fact:[a-f0-9]{20}$/;
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CONCEPT_LABELS = {
