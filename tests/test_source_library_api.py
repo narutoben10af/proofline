@@ -111,15 +111,44 @@ def catalog_action_pdf(action_name: str) -> bytes:
     return target.getvalue()
 
 
-def internal_open_action_pdf() -> bytes:
+def internal_open_action_pdf(
+    destination: NameObject | ArrayObject | None = None,
+    *,
+    include_named_destination: bool = False,
+) -> bytes:
     target = io.BytesIO()
     writer = PdfWriter()
     page = writer.add_blank_page(width=72, height=72)
+    if include_named_destination:
+        writer.root_object[NameObject("/Dests")] = DictionaryObject(
+            {NameObject("/target"): ArrayObject([page.indirect_reference, NameObject("/Fit")])}
+        )
     action = DictionaryObject(
         {
             NameObject("/Type"): NameObject("/Action"),
             NameObject("/S"): NameObject("/GoTo"),
-            NameObject("/D"): ArrayObject([page.indirect_reference, NameObject("/Fit")]),
+            NameObject("/D"): destination
+            if destination is not None
+            else ArrayObject([page.indirect_reference, NameObject("/Fit")]),
+        }
+    )
+    writer.root_object[NameObject("/OpenAction")] = writer._add_object(action)
+    writer.write(target)
+    return target.getvalue()
+
+
+def non_page_internal_open_action_pdf() -> bytes:
+    target = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    non_page = writer._add_object(
+        DictionaryObject({NameObject("/Type"): NameObject("/ProoflineNotPage")})
+    )
+    action = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Action"),
+            NameObject("/S"): NameObject("/GoTo"),
+            NameObject("/D"): ArrayObject([non_page, NameObject("/Fit")]),
         }
     )
     writer.root_object[NameObject("/OpenAction")] = writer._add_object(action)
@@ -613,9 +642,67 @@ def test_pdf_launch_and_external_goto_actions_are_structurally_rejected() -> Non
             assert response.json() == {"reason_code": "PDF_ACTIVE_CONTENT"}
 
 
+def test_pdf_unresolved_named_destination_is_rejected() -> None:
+    with TestClient(app, base_url="https://testserver") as client:
+        session, _capability = create_session(client)
+        response = client.post(
+            f"/api/sessions/{session['session_id']}/files",
+            headers=mutation_headers(session["csrf_token"]),
+            data={"role": "report_pdf"},
+            files={
+                "file": (
+                    "missing-destination.pdf",
+                    internal_open_action_pdf(NameObject("/missing")),
+                    PDF_MIME,
+                )
+            },
+        )
+    assert response.json() == {"reason_code": "PDF_ACTIVE_CONTENT"}
+
+
+def test_pdf_bare_integer_destination_is_rejected() -> None:
+    with TestClient(app, base_url="https://testserver") as client:
+        session, _capability = create_session(client)
+        response = client.post(
+            f"/api/sessions/{session['session_id']}/files",
+            headers=mutation_headers(session["csrf_token"]),
+            data={"role": "report_pdf"},
+            files={
+                "file": (
+                    "integer-destination.pdf",
+                    internal_open_action_pdf(ArrayObject([NumberObject(999), NameObject("/Fit")])),
+                    PDF_MIME,
+                )
+            },
+        )
+    assert response.json() == {"reason_code": "PDF_ACTIVE_CONTENT"}
+
+
+def test_pdf_non_page_indirect_destination_is_rejected() -> None:
+    with TestClient(app, base_url="https://testserver") as client:
+        session, _capability = create_session(client)
+        response = client.post(
+            f"/api/sessions/{session['session_id']}/files",
+            headers=mutation_headers(session["csrf_token"]),
+            data={"role": "report_pdf"},
+            files={
+                "file": (
+                    "non-page-destination.pdf",
+                    non_page_internal_open_action_pdf(),
+                    PDF_MIME,
+                )
+            },
+        )
+    assert response.json() == {"reason_code": "PDF_ACTIVE_CONTENT"}
+
+
 def test_internal_open_action_and_large_benign_graph_are_accepted() -> None:
     with TestClient(app, base_url="https://testserver") as client:
-        for content in (internal_open_action_pdf(), large_benign_pdf_graph()):
+        for content in (
+            internal_open_action_pdf(),
+            internal_open_action_pdf(NameObject("/target"), include_named_destination=True),
+            large_benign_pdf_graph(),
+        ):
             session, _capability = create_session(client)
             response = client.post(
                 f"/api/sessions/{session['session_id']}/files",

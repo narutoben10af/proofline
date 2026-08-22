@@ -12,6 +12,7 @@ import stat
 import tempfile
 import time
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -25,6 +26,7 @@ from pypdf import filters as pdf_filters
 from pypdf.errors import LimitReachedError
 from pypdf.generic import (
     ArrayObject,
+    Destination,
     DictionaryObject,
     IndirectObject,
     NameObject,
@@ -645,7 +647,13 @@ class SourceLibraryStore:
     def _resolve_pdf_object(value: object) -> object:
         return value.get_object() if isinstance(value, IndirectObject) else value
 
-    def _is_safe_internal_pdf_action(self, value: object) -> bool:
+    def _is_safe_internal_pdf_action(
+        self,
+        value: object,
+        *,
+        page_references: frozenset[IndirectObject],
+        resolve_named_destination: Callable[[str], Destination | None],
+    ) -> bool:
         action = self._resolve_pdf_object(value)
         if not isinstance(action, DictionaryObject):
             return False
@@ -655,10 +663,14 @@ class SourceLibraryStore:
             return False
         destination = self._resolve_pdf_object(action.get("/D"))
         if isinstance(destination, NameObject | TextStringObject):
-            return bool(str(destination))
+            named_destination = resolve_named_destination(str(destination))
+            if named_destination is None:
+                return False
+            destination = named_destination.dest_array
         if not isinstance(destination, ArrayObject) or not 2 <= len(destination) <= 6:
             return False
-        if not isinstance(destination[0], IndirectObject | int):
+        page_reference = destination[0]
+        if not isinstance(page_reference, IndirectObject) or page_reference not in page_references:
             return False
         fit = str(self._resolve_pdf_object(destination[1]))
         expected_lengths = {
@@ -727,6 +739,24 @@ class SourceLibraryStore:
             "/Widget",
         }
         root = reader.root_object
+        page_references = frozenset(
+            reference for page in reader.pages if (reference := page.indirect_reference) is not None
+        )
+        named_destinations: dict[str, Destination] | None = None
+
+        def resolve_named_destination(name: str) -> Destination | None:
+            nonlocal named_destinations
+            if named_destinations is None:
+                named_destinations = reader.named_destinations
+            return named_destinations.get(name)
+
+        def is_safe_internal_action(value: object) -> bool:
+            return self._is_safe_internal_pdf_action(
+                value,
+                page_references=page_references,
+                resolve_named_destination=resolve_named_destination,
+            )
+
         stack = [reader.trailer]
         seen: set[tuple[int, int] | int] = set()
         inspected = 0
@@ -778,18 +808,18 @@ class SourceLibraryStore:
                 ):
                     raise LibraryError("PDF_ACTIVE_CONTENT")
                 if object_type == "/Action" and (
-                    not allow_internal_navigation or not self._is_safe_internal_pdf_action(value)
+                    not allow_internal_navigation or not is_safe_internal_action(value)
                 ):
                     raise LibraryError("PDF_ACTIVE_CONTENT")
                 for action_key in ("/A", "/OpenAction"):
                     if action_key not in checked_keys:
                         continue
-                    if not allow_internal_navigation or not self._is_safe_internal_pdf_action(
+                    if not allow_internal_navigation or not is_safe_internal_action(
                         value[action_key]
                     ):
                         raise LibraryError("PDF_ACTIVE_CONTENT")
                 if str(value.get("/S", "")) == "/GoTo" and (
-                    not allow_internal_navigation or not self._is_safe_internal_pdf_action(value)
+                    not allow_internal_navigation or not is_safe_internal_action(value)
                 ):
                     raise LibraryError("PDF_ACTIVE_CONTENT")
                 stack.extend(item for key, item in value.items() if str(key) not in skipped_keys)
