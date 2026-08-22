@@ -7,6 +7,7 @@ import {
   SignIn, Sparkle, Table, UserCircle, Warning, X,
 } from "@phosphor-icons/react";
 import { ReviewDesk, downloadReviewedReport } from "./ReviewDesk";
+import { createMagicFinAuthHandoff } from "./auth";
 import { adaptProductContract, buildDeterministicDemoPdf, getAssistantAdapter, getAssistantChartSpecs, getProviderConnectionAdapter, getReviewedReportBundle, metricDefinitionRegistry, productFixture, requestReviewedPdf } from "./product-contract";
 import { analyzeSourceSession, createSourceSession, uploadSource } from "./session-api";
 
@@ -31,6 +32,7 @@ const utilityNav = [
 
 function routeTitle(route) {
   if (route === "/company") return "Home";
+  if (route === "/auth/callback") return "Completing sign in";
   return [...primaryNav, ...utilityNav].find((item) => item.route === route)?.label || (route === "/privacy" ? "Privacy & data" : route === "/legal" ? "Legal" : "Not found");
 }
 
@@ -432,7 +434,27 @@ function SettingsPage({ reducedMotion, compactSources, onReducedMotion, onCompac
   return <div className="route-page"><PageHeader eyebrow="Settings" title="Make the desk comfortable." description="Display preferences affect this browser session only. Provider credentials remain server-side." /><section className="settings-list"><label><span><strong>Reduce interface motion</strong><small>Minimize panel, progress, and route transitions. Your system preference is respected by default.</small></span><input aria-label="Reduce interface motion" type="checkbox" checked={reducedMotion} onChange={(event) => onReducedMotion(event.target.checked)} /></label><label><span><strong>Compact source cards</strong><small>Use a tighter reading density on large screens.</small></span><input aria-label="Compact source cards" type="checkbox" checked={compactSources} onChange={(event) => onCompactSources(event.target.checked)} /></label></section><section className="provider-settings" aria-labelledby="provider-settings-title"><div className="section-heading"><div><p className="eyebrow">Magic Assistant</p><h2 id="provider-settings-title">Provider connection</h2></div><StatusTag tone={provider.tone}>{provider.status}</StatusTag></div><dl><div><dt>Provider</dt><dd>Google</dd></div><div><dt>Model</dt><dd><code>gemma-4-26b-a4b-it</code></dd></div><div><dt>Last successful test</dt><dd>{provider.lastSuccessfulTest}</dd></div></dl><div className="provider-status" role={providerMode === "error" ? "alert" : "status"} aria-live="polite" aria-busy={providerMode === "loading"}><p>{provider.description}</p><button className="button secondary" type="button" onClick={testConnection} disabled={providerMode === "loading"}>{providerMode === "loading" ? "Testing connection…" : providerMode === "error" ? "Retry connection" : "Test connection"}</button></div><div className="fixture-note wide"><LockKey size={17} /><p><strong>No browser API key</strong>The deployment owner sets the key server-side. This frontend calls only MagicFin’s authenticated, provider-neutral endpoint and never stores a key in the client bundle, local storage, or logs.</p></div></section><div className="fixture-note wide"><Info size={17} /><p><strong>Session-only preference</strong>These working display settings are not saved after reload.</p></div></div>;
 }
 
-function SignInPage() { return <div className="route-page"><PageHeader eyebrow="Sign in" title="Accounts are not configured yet." description="The verified demo remains available without an account." /><section className="sign-in-panel"><LockKey size={32} /><h2>No fake login.</h2><p>MagicFin will only enable sign-in after a server-side authentication flow and truthful retention controls are connected.</p><button className="button secondary" type="button" disabled>Sign in unavailable</button></section></div>; }
+const authMessages = {
+  AUTH_CANCELLED: "Google sign-in was cancelled. Nothing changed in this browser.",
+  AUTH_CONFIGURATION_INVALID: "The public sign-in configuration is invalid. The deployment owner must correct it.",
+  AUTH_EXCHANGE_FAILED: "Google returned, but the session could not be verified. Try again.",
+  AUTH_SESSION_INVALID: "The saved session could not be verified. Sign in again.",
+  AUTH_SIGN_OUT_FAILED: "This browser could not sign out. Try again.",
+  AUTH_START_FAILED: "Google sign-in could not start. Try again.",
+  GOOGLE_SIGN_IN_NOT_CONFIGURED: "Google sign-in is prepared but not enabled for this deployment.",
+};
+
+function SignInPage({ authState, returnTo, onSignIn, onSignOut }) {
+  const configured = authState.status !== "unauthenticated" || authState.configured;
+  const authenticated = authState.status === "authenticated";
+  const loading = authState.status === "loading";
+  const tone = authenticated ? "success" : authState.status === "error" || authState.status === "cancelled" ? "warning" : "neutral";
+  const status = authenticated ? "Authenticated" : loading ? "Checking session" : authState.status === "cancelled" ? "Cancelled" : authState.status === "error" ? "Needs attention" : configured ? "Ready" : "Not configured";
+  const message = authMessages[authState.reasonCode] || (authenticated ? "Your verified Google session is active in this browser." : configured ? "Continue with Google to return to your current MagicFin work." : authMessages.GOOGLE_SIGN_IN_NOT_CONFIGURED);
+  return <div className="route-page auth-page"><PageHeader eyebrow="Sign in" title={authenticated ? "You’re signed in to MagicFin." : "Continue with Google."} description="Authentication uses a narrow Supabase session boundary; provider credentials never enter this interface." actions={<StatusTag tone={tone}>{status}</StatusTag>} /><section className="sign-in-panel" aria-labelledby="auth-panel-title" aria-busy={loading}><span className="google-mark" aria-hidden="true">G</span><h2 id="auth-panel-title">{authenticated ? "Verified browser session" : "A direct route back to your review"}</h2><p role={authState.status === "error" ? "alert" : "status"} aria-live="polite">{message}</p>{authenticated ? <><dl className="auth-session"><div><dt>Session owner</dt><dd>{authState.ownerId}</dd></div><div><dt>Scope</dt><dd>Current browser session</dd></div></dl><button className="button secondary" type="button" onClick={onSignOut}>Sign out</button></> : <><button className="button primary google-button" type="button" disabled={!configured || loading} onClick={onSignIn}><span aria-hidden="true">G</span>{loading ? "Checking sign-in…" : authState.status === "error" ? "Try Google sign-in again" : "Continue with Google"}</button><small>After sign-in, return to <code>{returnTo}</code>.</small></>}<div className="auth-boundary"><LockKey size={17} /><span>Only a verified user identifier reaches the UI. Tokens remain inside the authentication adapter.</span></div></section></div>;
+}
+
+function AuthCallbackPage() { return <div className="route-page"><section className="route-state" role="status" aria-live="polite"><span className="loader" aria-hidden="true" /><p className="eyebrow">Google sign in</p><h1>Verifying this browser session.</h1><p>MagicFin will return to the requested local route after the session owner is verified.</p></section></div>; }
 
 function PrivacyPage() { return <div className="route-page prose-page"><PageHeader eyebrow="Privacy & data" title="What this prototype actually does." /><section><h2>Files</h2><p>The public fixture checks selected filenames in your browser and does not send file contents to a server. A configured private session sends only files you explicitly choose to the temporary source service.</p><h2>Session data</h2><p>Fixture review state is browser-local. Configured private sessions expire after 30 minutes idle or two hours absolute in the running service; no durable persistence is claimed.</p><h2>Deletion</h2><p>“Clear demo session” clears the in-browser state shown by this prototype. It does not claim deletion from services that are not configured.</p><h2>Magic Assistant</h2><p>Magic Assistant uses verified scripted responses with citations unless a server-side provider is configured. No browser API key is used.</p></section></div>; }
 
@@ -508,7 +530,7 @@ function DeletedSessionState({ onRestore }) {
   return <section className="route-state receipt" aria-live="polite" tabIndex="-1"><span className="state-icon success"><Check size={24} weight="bold" aria-hidden="true" /></span><p className="eyebrow supported-text">Deletion receipt</p><h1>Demo session cleared.</h1><p>The Company, Sources, History, Review Desk, and Reports fixture views are cleared for this browser session. No server data existed.</p><button autoFocus className="button primary" type="button" onClick={onRestore}>Restore verified fixture</button></section>;
 }
 
-function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData }) {
+function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistantMode, initialProviderMode, productData, authState, authReturnTo, onAuthSignIn, onAuthSignOut }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [source, setSource] = useState(null);
   const [sessionCleared, setSessionCleared] = useState(false);
@@ -534,7 +556,8 @@ function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistan
     "/reports": <ReportsPage data={data} onNavigate={onNavigate} />,
     "/profile": <ProfilePage />,
     "/settings": <SettingsPage reducedMotion={reducedMotion} compactSources={compactSources} onReducedMotion={setReducedMotion} onCompactSources={setCompactSources} initialProviderMode={initialProviderMode} />,
-    "/sign-in": <SignInPage />,
+    "/sign-in": <SignInPage authState={authState} returnTo={authReturnTo} onSignIn={onAuthSignIn} onSignOut={onAuthSignOut} />,
+    "/auth/callback": <AuthCallbackPage />,
     "/privacy": <PrivacyPage />,
     "/legal": <LegalPage />,
   };
@@ -545,9 +568,28 @@ function AppShell({ route, onNavigate, assistantOpen, setAssistantOpen, assistan
   return <div className={`product-shell ${assistantOpen ? "assistant-is-open" : ""} ${reducedMotion ? "reduced-motion" : ""} ${compactSources ? "compact-sources" : ""}`}><a className="skip-link" href="#main-content">Skip to content</a><MobileHeader backgroundInert={mobileOpen || assistantOpen || sourceOpen} menuButtonRef={mobileMenuButtonRef} onOpenNav={() => setMobileOpen(true)} onOpenAssistant={openAssistant} /><Sidebar backgroundInert={assistantOpen || sourceOpen} panelRef={mobilePanelRef} route={route} onNavigate={onNavigate} onOpenAssistant={openAssistant} assistantButtonRef={assistantButtonRef} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />{mobileOpen && <button className="nav-scrim" type="button" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}<main id="main-content" className="workspace" tabIndex="-1" aria-label={routeTitle(route)} inert={mobileOpen || assistantOpen || sourceOpen} aria-hidden={mobileOpen || assistantOpen || sourceOpen ? "true" : undefined}><div className="route-transition" key={route}>{content}</div></main><AssistantPanel data={data} open={assistantOpen} onClose={() => { if (!source) setAssistantOpen(false); }} onOpenCitation={openSource} returnRef={assistantReturnRef} initialMode={assistantMode} sourceOpen={sourceOpen} /><CitationDrawer source={source} onClose={() => setSource(null)} onNavigate={navigateFromCitation} returnRef={sourceReturnRef} /></div>;
 }
 
-export function App({ initialRoute, initialAssistantOpen = false, initialAssistantMode = "verified_demo", initialProviderMode = "not_configured", initialProductData = productFixture }) {
+export function App({ initialRoute, initialAssistantOpen = false, initialAssistantMode = "verified_demo", initialProviderMode = "not_configured", initialProductData = productFixture, authHandoffFactory = createMagicFinAuthHandoff }) {
   const [route, navigate] = useRoute(initialRoute);
   const [assistantOpen, setAssistantOpen] = useState(initialAssistantOpen);
+  const authHandoffRef = useRef(null);
+  if (!authHandoffRef.current) authHandoffRef.current = authHandoffFactory();
+  const authHandoff = authHandoffRef.current;
+  const [authState, setAuthState] = useState(authHandoff.auth.state);
+  const authReturnToRef = useRef("/");
+  useEffect(() => {
+    const unsubscribe = authHandoff.auth.subscribe(setAuthState);
+    void authHandoff.auth.initialize();
+    return () => { unsubscribe(); authHandoff.auth.destroy(); };
+  }, [authHandoff]);
+  useEffect(() => {
+    if (!["/sign-in", "/auth/callback"].includes(route)) authReturnToRef.current = route;
+  }, [route]);
+  useEffect(() => {
+    if (route !== "/auth/callback") return undefined;
+    let active = true;
+    void authHandoff.handleCallback(window.location.href).then(({ returnTo }) => { if (active) navigate(returnTo); });
+    return () => { active = false; };
+  }, [authHandoff, route]);
   useEffect(() => {
     document.title = `${routeTitle(route)} · MagicFin`;
     const hash = window.location.hash.slice(1);
@@ -559,5 +601,5 @@ export function App({ initialRoute, initialAssistantOpen = false, initialAssista
     }, 0);
     return () => window.clearTimeout(timer);
   }, [route]);
-  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} />;
+  return <AppShell route={route} onNavigate={navigate} assistantOpen={assistantOpen} setAssistantOpen={setAssistantOpen} assistantMode={initialAssistantMode} initialProviderMode={initialProviderMode} productData={initialProductData} authState={authState} authReturnTo={authReturnToRef.current} onAuthSignIn={() => authHandoff.auth.signInWithGoogle(authReturnToRef.current)} onAuthSignOut={() => authHandoff.auth.signOut()} />;
 }

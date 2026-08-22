@@ -6,6 +6,23 @@ import { MAX_REVIEWED_REPORT_PDF_BYTES, requestReviewedPdf } from "./product-con
 
 const originalViewport = { width: window.innerWidth, height: window.innerHeight };
 
+function fakeAuthHandoff(initialState, callbackReturnTo = "/") {
+  let state = initialState;
+  const listeners = new Set();
+  const auth = {
+    state,
+    subscribe: vi.fn((listener) => { listeners.add(listener); listener(state); return () => listeners.delete(listener); }),
+    initialize: vi.fn().mockResolvedValue(state),
+    signInWithGoogle: vi.fn().mockResolvedValue(state),
+    signOut: vi.fn().mockResolvedValue(state),
+    destroy: vi.fn(),
+  };
+  return {
+    handoff: { auth, config: { configured: initialState.configured ?? true }, privateStorage: null, handleCallback: vi.fn().mockResolvedValue({ state, returnTo: callbackReturnTo }) },
+    emit(nextState) { state = nextState; auth.state = nextState; for (const listener of listeners) listener(nextState); },
+  };
+}
+
 const liveAnalysisResponse = {
   output_status: "calculated",
   metric_registry_version: "1.0.0",
@@ -57,6 +74,55 @@ describe("MagicFin product shell", () => {
     expect(screen.queryByText(/^Verified fixture$/i)).not.toBeInTheDocument();
     expect(screen.getByText("Demo data · human-checked")).toBeInTheDocument();
     expect(document.title).toBe("Home · MagicFin");
+  });
+
+  it("renders Google sign-in as truthfully not configured in the current preview", () => {
+    render(<App initialRoute="/sign-in" />);
+    expect(screen.getByRole("heading", { name: /continue with google/i })).toBeInTheDocument();
+    expect(screen.getByText(/not enabled for this deployment/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /continue with google/i })).toBeDisabled();
+    expect(screen.getByText(/tokens remain inside the authentication adapter/i)).toBeInTheDocument();
+  });
+
+  it("starts configured Google sign-in with the prior local route as return-to", async () => {
+    const user = userEvent.setup();
+    const fake = fakeAuthHandoff({ status: "unauthenticated", configured: true });
+    render(<App initialRoute="/reports" authHandoffFactory={() => fake.handoff} />);
+    await user.click(within(screen.getByRole("navigation", { name: /account and settings/i })).getByRole("button", { name: /sign in/i }));
+    expect(screen.getByText("/reports", { selector: "code" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /continue with google/i }));
+    expect(fake.handoff.auth.signInWithGoogle).toHaveBeenCalledWith("/reports");
+  });
+
+  it.each([
+    [{ status: "loading" }, /checking session/i, /checking sign-in/i],
+    [{ status: "cancelled", reasonCode: "AUTH_CANCELLED" }, /sign-in was cancelled/i, /continue with google/i],
+    [{ status: "error", reasonCode: "AUTH_START_FAILED" }, /could not start/i, /try google sign-in again/i],
+  ])("renders the Google auth boundary state %#", (state, message, action) => {
+    const fake = fakeAuthHandoff(state);
+    render(<App initialRoute="/sign-in" authHandoffFactory={() => fake.handoff} />);
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: action })).toBeInTheDocument();
+  });
+
+  it("renders verified ownership and signs out only through the auth adapter", async () => {
+    const user = userEvent.setup();
+    const ownerId = "10000000-0000-4000-8000-000000000001";
+    const fake = fakeAuthHandoff({ status: "authenticated", ownerId });
+    render(<App initialRoute="/sign-in" authHandoffFactory={() => fake.handoff} />);
+    expect(screen.getByRole("heading", { name: /signed in to magicfin/i })).toBeInTheDocument();
+    expect(screen.getByText(ownerId)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /sign out/i }));
+    expect(fake.handoff.auth.signOut).toHaveBeenCalledOnce();
+  });
+
+  it("handles the auth callback through the adapter and navigates only to its sanitized return route", async () => {
+    const fake = fakeAuthHandoff({ status: "loading" }, "/review");
+    render(<App initialRoute="/auth/callback" authHandoffFactory={() => fake.handoff} />);
+    expect(screen.getByRole("heading", { name: /verifying this browser session/i })).toBeInTheDocument();
+    await waitFor(() => expect(fake.handoff.handleCallback).toHaveBeenCalled());
+    await waitFor(() => expect(window.location.pathname).toBe("/review"));
+    expect(screen.getByRole("heading", { name: /one claim. every receipt/i })).toBeInTheDocument();
   });
 
   it("sends the Home analysis action to the real uploader without simulating completion", async () => {
@@ -591,7 +657,7 @@ describe("MagicFin product shell", () => {
     for (const [label, heading] of [
       ["Profile", /local demo identity/i],
       ["Settings", /make the desk comfortable/i],
-      ["Sign in", /accounts are not configured/i],
+      ["Sign in", /continue with google/i],
     ]) {
       await user.click(screen.getByRole("button", { name: label }));
       expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
