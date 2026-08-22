@@ -1,10 +1,12 @@
 import asyncio
+import hashlib
 import io
 import json
 import logging
 import threading
 import time
 import zipfile
+import zlib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -12,10 +14,14 @@ from fastapi import UploadFile
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 from pypdf.generic import (
+    ArrayObject,
     DecodedStreamObject,
     DictionaryObject,
+    EncodedStreamObject,
     NameObject,
+    NumberObject,
     RectangleObject,
+    TextStringObject,
 )
 from starlette.datastructures import Headers
 
@@ -26,7 +32,12 @@ from proofline.contracts import (
     SourceSessionCreated,
     SourceSessionStatus,
 )
-from proofline.source_library import PDF_MIME, XLSX_MIME, SourceLibraryStore
+from proofline.source_library import (
+    PDF_MIME,
+    PDF_SANITIZER_VERSION,
+    XLSX_MIME,
+    SourceLibraryStore,
+)
 
 ORIGIN_HEADERS = {"Origin": "https://testserver", "Sec-Fetch-Site": "same-origin"}
 
@@ -78,6 +89,77 @@ def uri_action_pdf() -> bytes:
     writer = PdfWriter()
     writer.add_blank_page(width=72, height=72)
     writer.add_uri(0, "https://example.invalid", RectangleObject((0, 0, 20, 20)))
+    writer.write(target)
+    return target.getvalue()
+
+
+def catalog_action_pdf(action_name: str) -> bytes:
+    target = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    action = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Action"),
+            NameObject("/S"): NameObject(action_name),
+        }
+    )
+    if action_name == "/GoToR":
+        action[NameObject("/F")] = TextStringObject("external.pdf")
+        action[NameObject("/D")] = TextStringObject("destination")
+    writer.root_object[NameObject("/OpenAction")] = writer._add_object(action)
+    writer.write(target)
+    return target.getvalue()
+
+
+def internal_open_action_pdf() -> bytes:
+    target = io.BytesIO()
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=72, height=72)
+    action = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Action"),
+            NameObject("/S"): NameObject("/GoTo"),
+            NameObject("/D"): ArrayObject([page.indirect_reference, NameObject("/Fit")]),
+        }
+    )
+    writer.root_object[NameObject("/OpenAction")] = writer._add_object(action)
+    writer.write(target)
+    return target.getvalue()
+
+
+def interactive_pdf_requiring_sanitization() -> bytes:
+    target = io.BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.add_uri(0, "https://attacker.invalid/exfiltrate", RectangleObject((0, 0, 20, 20)))
+    writer.add_js('app.alert("SANITIZER-MARKER");')
+    writer.add_attachment("payload.txt", b"EMBEDDED-MARKER")
+    writer.root_object[NameObject("/AcroForm")] = DictionaryObject(
+        {NameObject("/XFA"): TextStringObject("XFA-MARKER")}
+    )
+    writer.write(target)
+    return target.getvalue()
+
+
+def large_benign_pdf_graph() -> bytes:
+    target = io.BytesIO()
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=72, height=72)
+    page[NameObject("/ProoflineBenignArray")] = ArrayObject(
+        NumberObject(index) for index in range(12_000)
+    )
+    writer.write(target)
+    return target.getvalue()
+
+
+def decompression_bomb_pdf() -> bytes:
+    target = io.BytesIO()
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=72, height=72)
+    stream = EncodedStreamObject()
+    stream._data = zlib.compress(b"q\n" * (6 * 1024 * 1024))
+    stream[NameObject("/Filter")] = NameObject("/FlateDecode")
+    page[NameObject("/Contents")] = writer._add_object(stream)
     writer.write(target)
     return target.getvalue()
 
@@ -514,6 +596,97 @@ def test_pdf_uri_action_is_structurally_rejected() -> None:
             files={"file": ("linked.pdf", uri_action_pdf(), PDF_MIME)},
         )
     assert response.json() == {"reason_code": "PDF_ACTIVE_CONTENT"}
+
+
+def test_pdf_launch_and_external_goto_actions_are_structurally_rejected() -> None:
+    with TestClient(app, base_url="https://testserver") as client:
+        for action_name in ("/Launch", "/GoToR"):
+            session, _capability = create_session(client)
+            response = client.post(
+                f"/api/sessions/{session['session_id']}/files",
+                headers=mutation_headers(session["csrf_token"]),
+                data={"role": "report_pdf"},
+                files={
+                    "file": ("active.pdf", catalog_action_pdf(action_name), PDF_MIME),
+                },
+            )
+            assert response.json() == {"reason_code": "PDF_ACTIVE_CONTENT"}
+
+
+def test_internal_open_action_and_large_benign_graph_are_accepted() -> None:
+    with TestClient(app, base_url="https://testserver") as client:
+        for content in (internal_open_action_pdf(), large_benign_pdf_graph()):
+            session, _capability = create_session(client)
+            response = client.post(
+                f"/api/sessions/{session['session_id']}/files",
+                headers=mutation_headers(session["csrf_token"]),
+                data={"role": "report_pdf"},
+                files={"file": ("report.pdf", content, PDF_MIME)},
+            )
+            assert response.status_code == 201
+
+
+def test_interactive_pdf_is_rebuilt_as_a_strict_static_derivative() -> None:
+    original = interactive_pdf_requiring_sanitization()
+    with TestClient(app, base_url="https://testserver") as client:
+        session, _capability = create_session(client)
+        response = client.post(
+            f"/api/sessions/{session['session_id']}/files",
+            headers=mutation_headers(session["csrf_token"]),
+            data={"role": "report_pdf"},
+            files={"file": ("interactive.pdf", original, PDF_MIME)},
+        )
+        assert response.status_code == 201
+
+        store = client.app.state.source_store
+        record = store._sessions[session["session_id"]]
+        stored = record.files[response.json()["file_id"]]
+        assert stored.original_path is not None
+        assert stored.original_path.read_bytes() == original
+        assert stored.sanitization is not None
+        assert stored.sanitization.sanitizer_version == PDF_SANITIZER_VERSION
+        assert stored.sanitization.original_sha256 == hashlib.sha256(original).hexdigest()
+        derivative = stored.path.read_bytes()
+        assert stored.sanitization.derivative_sha256 == hashlib.sha256(derivative).hexdigest()
+        assert derivative != original
+        assert b"SANITIZER-MARKER" not in derivative
+        assert b"EMBEDDED-MARKER" not in derivative
+        assert (
+            store._probe_pdf_structure(
+                stored.path,
+                time.monotonic(),
+                allow_static_sanitization=False,
+            )
+            is False
+        )
+
+        downloaded = client.get(
+            f"/api/sessions/{session['session_id']}/files/{response.json()['file_id']}/content"
+        )
+        assert downloaded.content == derivative
+        assert downloaded.content != original
+
+        derivative_path = stored.path
+        original_path = stored.original_path
+        store.status(record)
+        refreshed = record.files[response.json()["file_id"]]
+        assert refreshed.original_path == original_path
+        assert refreshed.sanitization == stored.sanitization
+        store.remove_file(record, response.json()["file_id"])
+        assert not derivative_path.exists()
+        assert original_path is not None and not original_path.exists()
+
+
+def test_pdf_decompression_abuse_is_rejected_with_a_stable_reason() -> None:
+    with TestClient(app, base_url="https://testserver") as client:
+        session, _capability = create_session(client)
+        response = client.post(
+            f"/api/sessions/{session['session_id']}/files",
+            headers=mutation_headers(session["csrf_token"]),
+            data={"role": "report_pdf"},
+            files={"file": ("bomb.pdf", decompression_bomb_pdf(), PDF_MIME)},
+        )
+    assert response.json() == {"reason_code": "PDF_DECOMPRESSION_LIMIT"}
 
 
 def test_pypdf_controlled_messages_are_suppressed(tmp_path: Path, caplog) -> None:
